@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%A7%AD</text></svg>">
 <style>
   :root {
@@ -257,6 +258,12 @@
 
   footer.foot { max-width: 1180px; margin: 20px auto 40px; padding: 0 clamp(16px,4vw,40px);
     font-size: 11.5px; color: var(--ink-faint); }
+
+  #mapHost { height: 420px; border-radius: 10px; overflow: hidden; border: 1px solid var(--panel-edge); background: var(--panel); }
+  #mapHost.empty { display: none; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--ink); }
+  .leaflet-container { font-family: var(--font-body); }
+  #mapStatus { font-size: 12px; color: var(--ink-faint); margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -284,6 +291,7 @@
 
   <footer class="foot" id="footNote"></footer>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
   "use strict";
@@ -344,6 +352,7 @@
         {id: uid(), text:"Euros in cash for tolls/parking", done:false},
         {id: uid(), text:"Phone holder + offline maps downloaded", done:false}
       ],
+      geo: {},
       updatedAt: Date.now()
     };
   }
@@ -352,7 +361,7 @@
       countries:[], preferences:[], legs:[], days:[],
       budget:{ fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 },
       fuel: { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 },
-      packingList: [], updatedAt: Date.now() };
+      packingList: [], geo: {}, updatedAt: Date.now() };
   }
 
   // ---------- storage layer ----------
@@ -468,6 +477,7 @@
     if (!t.budget) t.budget = { fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 };
     if (!t.fuel) t.fuel = { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 };
     if (!t.packingList) t.packingList = [];
+    if (!t.geo) t.geo = {};
     if (!t.days) t.days = [];
     if (!t.legs) t.legs = [];
     if (!t.countries) t.countries = [];
@@ -597,6 +607,12 @@
       </section>
 
       <section class="block">
+        <div class="block-head"><h3>Map</h3><button class="ghost-btn" id="updateMapBtn" style="margin-left:auto">Update map</button></div>
+        <div id="mapHost"></div>
+        <p id="mapStatus"></p>
+      </section>
+
+      <section class="block">
         <div class="block-head"><h3>Day by day</h3><button class="ghost-btn" id="genDaysBtn" style="margin-left:auto">Generate days from dates</button></div>
         <div class="day-tabs" id="dayTabs"></div>
         <div id="dayPanelHost"></div>
@@ -681,12 +697,15 @@
       }
     });
 
+    document.getElementById('updateMapBtn').addEventListener('click', () => { updateMap(); });
+
     renderLegs();
     renderDays();
     renderWeather();
     renderFuelCalc();
     renderBudget();
     renderPacking();
+    drawMapFromCache();
   }
 
   function renderPacking(){
@@ -750,16 +769,21 @@
     });
   }
 
-  // ---------- weather ----------
+  // ---------- weather & map shared geocoding ----------
   const geoCache = {};
   async function geocode(place){
-    if (geoCache[place]) return geoCache[place];
+    const key = place.trim().toLowerCase();
+    if (!key) throw new Error('empty place');
+    if (geoCache[key]) return geoCache[key];
+    const d = state.draft;
+    if (d && d.geo && d.geo[key]){ geoCache[key] = d.geo[key]; return d.geo[key]; }
     const res = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(place)+'&count=1&language=en&format=json');
     const json = await res.json();
     if (!json.results || !json.results.length) throw new Error('place not found');
     const r = json.results[0];
     const out = {lat: r.latitude, lon: r.longitude, label: r.name + (r.country ? ', '+r.country : '')};
-    geoCache[place] = out;
+    geoCache[key] = out;
+    if (d){ d.geo = d.geo || {}; d.geo[key] = out; scheduleSave(); }
     return out;
   }
   function daysFromToday(dateStr){
@@ -843,6 +867,79 @@
     });
   }
 
+  // ---------- map ----------
+  let leafletMap = null, markerLayer = null, lineLayer = null;
+
+  function computeStops(d){
+    if (!d.legs || !d.legs.length) return [];
+    const stops = [d.legs[0].from, ...d.legs.map(l => l.to)];
+    return stops.map(s => (s||'').trim()).filter(Boolean);
+  }
+
+  function ensureMap(){
+    if (leafletMap) return leafletMap;
+    leafletMap = L.map('mapHost', { scrollWheelZoom: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+    }).addTo(leafletMap);
+    leafletMap.setView([49.5, 5], 5);
+    markerLayer = L.layerGroup().addTo(leafletMap);
+    return leafletMap;
+  }
+
+  function drawMapFromCache(){
+    const d = state.draft;
+    const host = document.getElementById('mapHost');
+    const statusEl = document.getElementById('mapStatus');
+    if (!host || !statusEl) return;
+    const stops = computeStops(d);
+    if (!stops.length){
+      host.classList.add('empty');
+      statusEl.textContent = 'Add some legs above to see them here.';
+      return;
+    }
+    host.classList.remove('empty');
+    const map = ensureMap();
+    setTimeout(() => map.invalidateSize(), 0);
+    markerLayer.clearLayers();
+    if (lineLayer){ map.removeLayer(lineLayer); lineLayer = null; }
+    const geo = d.geo || {};
+    const pts = [];
+    const missing = [];
+    stops.forEach((s, i) => {
+      const g = geo[s.toLowerCase()];
+      if (g){
+        pts.push([g.lat, g.lon]);
+        const tag = i === 0 ? ' (start)' : (i === stops.length - 1 ? ' (finish)' : '');
+        L.marker([g.lat, g.lon]).addTo(markerLayer).bindPopup(`<b>${esc(s)}</b>${tag}`);
+      } else if (missing.indexOf(s) === -1){
+        missing.push(s);
+      }
+    });
+    if (pts.length > 1){
+      const routeColor = getComputedStyle(document.documentElement).getPropertyValue('--route').trim() || '#3E7C6E';
+      lineLayer = L.polyline(pts, { color: routeColor, weight: 3 }).addTo(map);
+      map.fitBounds(lineLayer.getBounds().pad(0.2));
+    } else if (pts.length === 1){
+      map.setView(pts[0], 7);
+    }
+    statusEl.textContent = missing.length
+      ? `Couldn't place yet: ${missing.join(', ')} — click "Update map" to look them up.`
+      : `${pts.length} stop${pts.length === 1 ? '' : 's'} plotted.`;
+  }
+
+  async function updateMap(){
+    const d = state.draft;
+    const stops = computeStops(d);
+    const statusEl = document.getElementById('mapStatus');
+    if (statusEl) statusEl.textContent = 'Looking up locations…';
+    for (const s of stops){
+      try{ await geocode(s); } catch(e){ /* leave as missing, shown after draw */ }
+    }
+    drawMapFromCache();
+  }
+
   function wireCountryChips(){
     document.getElementById('countryChips').querySelectorAll('.rm').forEach(rm => {
       rm.addEventListener('click', (e) => {
@@ -907,11 +1004,15 @@
           if (field === 'cost') renderTotals();
         });
       });
-      el.querySelector('.removeleg').addEventListener('click', () => { d.legs.splice(idx,1); scheduleSave(); renderLegs(); renderTotals(); });
+      el.querySelector('.removeleg').addEventListener('click', () => { d.legs.splice(idx,1); scheduleSave(); renderLegs(); renderTotals(); drawMapFromCache(); });
       el.querySelector('.moveup').addEventListener('click', () => { if(idx>0){ [d.legs[idx-1],d.legs[idx]]=[d.legs[idx],d.legs[idx-1]]; scheduleSave(); renderLegs(); }});
       el.querySelector('.movedown').addEventListener('click', () => { if(idx<d.legs.length-1){ [d.legs[idx+1],d.legs[idx]]=[d.legs[idx],d.legs[idx+1]]; scheduleSave(); renderLegs(); }});
+      el.querySelectorAll('input.city').forEach(inp => {
+        inp.addEventListener('change', () => drawMapFromCache());
+      });
     });
     renderTotals();
+    drawMapFromCache();
   }
 
   function renderDays(){
