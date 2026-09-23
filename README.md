@@ -58,6 +58,7 @@ Test mode leaves the database open to *anyone who has your config values* (which
 ## What's in it
 
 - **Roadbook** — the route, leg by leg, with mode, distance, duration, notes and cost. Ferry/Eurotunnel legs get a "Check current prices" link that opens a search for that specific crossing — there's no way to pull *live* prices into a static page without a backend and an API key, so this is the honest middle ground.
+- **Map** — every stop on the route plotted on an OpenStreetMap map (via [Leaflet](https://leafletjs.com), free, no key needed), connected in order. Click "Update map" after adding or renaming legs to look up any new places — locations are cached on the trip itself, so it's instant after the first lookup, including for whoever you're syncing with.
 - **Day by day** — generated from your start/end dates, with an overnight city and free-form notes per day.
 - **Weather** — per day, click "check" and it geocodes the overnight city and fetches from [Open-Meteo](https://open-meteo.com) (free, no API key, works straight from the browser). If the date's within 15 days it shows an actual forecast; further out, it averages the same calendar date across the last 5 years so you get a feel for typical conditions.
 - **Fuel calculator** — sums the distance of drive-only legs, and turns your car's efficiency (mpg or L/100km) and a fuel price into an estimated cost, which you can apply straight to the Fuel line in the budget.
