@@ -352,7 +352,7 @@
         {id: uid(), text:"Euros in cash for tolls/parking", done:false},
         {id: uid(), text:"Phone holder + offline maps downloaded", done:false}
       ],
-      geo: {},
+      geoV2: {},
       updatedAt: Date.now()
     };
   }
@@ -361,7 +361,7 @@
       countries:[], preferences:[], legs:[], days:[],
       budget:{ fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 },
       fuel: { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 },
-      packingList: [], geo: {}, updatedAt: Date.now() };
+      packingList: [], geoV2: {}, updatedAt: Date.now() };
   }
 
   // ---------- storage layer ----------
@@ -477,7 +477,7 @@
     if (!t.budget) t.budget = { fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 };
     if (!t.fuel) t.fuel = { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 };
     if (!t.packingList) t.packingList = [];
-    if (!t.geo) t.geo = {};
+    if (!t.geoV2) t.geoV2 = {};
     if (!t.days) t.days = [];
     if (!t.legs) t.legs = [];
     if (!t.countries) t.countries = [];
@@ -771,19 +771,62 @@
 
   // ---------- weather & map shared geocoding ----------
   const geoCache = {};
+  const COUNTRY_ALIASES = {
+    england: ['united kingdom','uk','england'],
+    scotland: ['united kingdom','uk','scotland'],
+    wales: ['united kingdom','uk','wales'],
+    'northern ireland': ['united kingdom','uk','northern ireland'],
+    uk: ['united kingdom','uk'],
+    britain: ['united kingdom','uk'],
+    holland: ['netherlands','holland']
+  };
+  function countryMatches(tripCountry, resultCountry){
+    const a = (tripCountry||'').trim().toLowerCase();
+    const b = (resultCountry||'').trim().toLowerCase();
+    if (!a || !b) return false;
+    if (a === b || b.includes(a) || a.includes(b)) return true;
+    const aliases = COUNTRY_ALIASES[a];
+    return !!(aliases && aliases.some(al => b.includes(al)));
+  }
+  function geocodeVariants(place){
+    const variants = [place];
+    const noCitySuffix = place.replace(/\s+city$/i, '').trim();
+    if (noCitySuffix && noCitySuffix.toLowerCase() !== place.toLowerCase()) variants.push(noCitySuffix);
+    if (place.includes(',')){
+      const parts = place.split(',').map(p => p.trim()).filter(Boolean);
+      if (parts.length > 1){
+        variants.push(parts[parts.length - 1]);
+        variants.push(parts[0]);
+      }
+    }
+    return [...new Set(variants.filter(Boolean))];
+  }
+  async function geocodeRaw(query){
+    const res = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(query)+'&count=6&language=en&format=json');
+    const json = await res.json();
+    return json.results || [];
+  }
   async function geocode(place){
     const key = place.trim().toLowerCase();
     if (!key) throw new Error('empty place');
     if (geoCache[key]) return geoCache[key];
     const d = state.draft;
-    if (d && d.geo && d.geo[key]){ geoCache[key] = d.geo[key]; return d.geo[key]; }
-    const res = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(place)+'&count=1&language=en&format=json');
-    const json = await res.json();
-    if (!json.results || !json.results.length) throw new Error('place not found');
-    const r = json.results[0];
+    if (d && d.geoV2 && d.geoV2[key]){ geoCache[key] = d.geoV2[key]; return d.geoV2[key]; }
+    let candidates = [];
+    for (const variant of geocodeVariants(place)){
+      candidates = await geocodeRaw(variant);
+      if (candidates.length) break;
+    }
+    if (!candidates.length) throw new Error('place not found');
+    const prefCountries = (d && d.countries) || [];
+    let r = candidates[0];
+    if (prefCountries.length){
+      const match = candidates.find(cand => prefCountries.some(pc => countryMatches(pc, cand.country)));
+      if (match) r = match;
+    }
     const out = {lat: r.latitude, lon: r.longitude, label: r.name + (r.country ? ', '+r.country : '')};
     geoCache[key] = out;
-    if (d){ d.geo = d.geo || {}; d.geo[key] = out; scheduleSave(); }
+    if (d){ d.geoV2 = d.geoV2 || {}; d.geoV2[key] = out; scheduleSave(); }
     return out;
   }
   function daysFromToday(dateStr){
@@ -904,7 +947,7 @@
     setTimeout(() => map.invalidateSize(), 0);
     markerLayer.clearLayers();
     if (lineLayer){ map.removeLayer(lineLayer); lineLayer = null; }
-    const geo = d.geo || {};
+    const geo = d.geoV2 || {};
     const pts = [];
     const missing = [];
     stops.forEach((s, i) => {
