@@ -160,6 +160,8 @@
   .chip.country { display:flex; align-items:center; gap:6px; }
   .chip.country .rm { color: var(--ink-faint); }
   .chip.country .rm:hover { color: var(--danger); }
+  .chip.currency .rm { color: var(--ink-faint); cursor: pointer; }
+  .chip.currency .rm:hover { color: var(--danger); }
   .add-country { display:flex; align-items:center; gap:6px; margin-top: 2px; }
   .add-country input {
     background: none; border: none; border-bottom: 1px dashed var(--panel-edge);
@@ -264,6 +266,11 @@
   .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--ink); }
   .leaflet-container { font-family: var(--font-body); }
   #mapStatus { font-size: 12px; color: var(--ink-faint); margin-top: 8px; }
+  .map-legend { background: var(--panel); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 8px;
+    padding: 7px 10px; font-size: 12px; line-height: 1.7; box-shadow: 0 1px 6px rgba(0,0,0,0.18); }
+  .map-legend .sw { display:inline-block; width: 22px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 7px; border-radius: 2px; }
+  .leg-arrow-icon { background: none; border: none; }
+  .leg-arrow-icon svg { display:block; overflow: visible; filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.55)); }
 </style>
 </head>
 <body>
@@ -311,8 +318,23 @@
     {id:'train', label:'Train'},
     {id:'flight', label:'Flight'}
   ];
-  const CURRENCY_SYM = { GBP:'£', EUR:'€', USD:'$' };
+  const CURRENCY_SYM = { GBP:'£', EUR:'€', USD:'$', CHF:'CHF', SEK:'kr', NOK:'kr', DKK:'kr', PLN:'zł', CZK:'Kč', HUF:'Ft' };
   const PREFS = ['Scenic route','Fastest route','Avoid tolls','Family-friendly','Comfort stops','Budget-conscious'];
+  const COUNTRY_CURRENCY = {
+    'united kingdom':'GBP', 'ireland':'EUR', 'france':'EUR', 'belgium':'EUR', 'luxembourg':'EUR',
+    'netherlands':'EUR', 'germany':'EUR', 'spain':'EUR', 'italy':'EUR', 'portugal':'EUR', 'austria':'EUR',
+    'finland':'EUR', 'greece':'EUR', 'slovakia':'EUR', 'slovenia':'EUR', 'estonia':'EUR', 'latvia':'EUR',
+    'lithuania':'EUR', 'malta':'EUR', 'cyprus':'EUR', 'croatia':'EUR',
+    'switzerland':'CHF', 'norway':'NOK', 'sweden':'SEK', 'denmark':'DKK', 'poland':'PLN',
+    'czechia':'CZK', 'czech republic':'CZK', 'hungary':'HUF'
+  };
+  function currencyForCountry(countryName){
+    return COUNTRY_CURRENCY[(countryName||'').trim().toLowerCase()] || null;
+  }
+  function extractCountry(label){
+    const parts = (label||'').split(',');
+    return parts.length ? parts[parts.length-1].trim() : '';
+  }
 
   function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
   function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -324,24 +346,26 @@
       name: "Nottinghamshire to the Continent",
       startDate: "2026-12-26",
       endDate: "2027-01-01",
-      currency: "GBP",
+      currencies: ["GBP","EUR"],
+      rates: { EUR: 0.86 },
       travelers: 2,
       countries: ["England","France","Belgium","Luxembourg","Netherlands","Germany"],
       preferences: ["Scenic route"],
       legs: [
-        {id: uid(), from:"Home, Nottinghamshire", to:"Dover", mode:"drive", distanceKm:280, hours:4, cost:0, notes:"Down through the Midlands, onto the M20"},
-        {id: uid(), from:"Dover", to:"Calais", mode:"ferry", distanceKm:34, hours:1.5, cost:0, notes:"Compare against the Eurotunnel — check holiday crossing times"},
-        {id: uid(), from:"Calais", to:"Brussels", mode:"drive", distanceKm:200, hours:2.5, cost:0, notes:""},
-        {id: uid(), from:"Brussels", to:"Luxembourg City", mode:"drive", distanceKm:220, hours:2.5, cost:0, notes:""},
-        {id: uid(), from:"Luxembourg City", to:"Amsterdam", mode:"drive", distanceKm:390, hours:4.5, cost:0, notes:""},
-        {id: uid(), from:"Amsterdam", to:"Cologne", mode:"drive", distanceKm:260, hours:3, cost:0, notes:""},
-        {id: uid(), from:"Cologne", to:"Calais", mode:"drive", distanceKm:400, hours:4.5, cost:0, notes:"Loop back toward the coast"},
-        {id: uid(), from:"Calais", to:"Dover", mode:"ferry", distanceKm:34, hours:1.5, cost:0, notes:""},
-        {id: uid(), from:"Dover", to:"Home, Nottinghamshire", mode:"drive", distanceKm:280, hours:4, cost:0, notes:""}
+        {id: uid(), from:"Home, Nottinghamshire", to:"Dover", mode:"drive", distanceKm:280, hours:4, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:"Down through the Midlands, onto the M20"},
+        {id: uid(), from:"Dover", to:"Calais", mode:"ferry", distanceKm:34, hours:1.5, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:"Compare against the Eurotunnel — check holiday crossing times"},
+        {id: uid(), from:"Calais", to:"Brussels", mode:"drive", distanceKm:200, hours:2.5, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:""},
+        {id: uid(), from:"Brussels", to:"Luxembourg City", mode:"drive", distanceKm:220, hours:2.5, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:""},
+        {id: uid(), from:"Luxembourg City", to:"Amsterdam", mode:"drive", distanceKm:390, hours:4.5, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:""},
+        {id: uid(), from:"Amsterdam", to:"Cologne", mode:"drive", distanceKm:260, hours:3, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:""},
+        {id: uid(), from:"Cologne", to:"Calais", mode:"drive", distanceKm:400, hours:4.5, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:"Loop back toward the coast"},
+        {id: uid(), from:"Calais", to:"Dover", mode:"ferry", distanceKm:34, hours:1.5, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:""},
+        {id: uid(), from:"Dover", to:"Home, Nottinghamshire", mode:"drive", distanceKm:280, hours:4, cost:0, costCurrency:"GBP", costCurrencyAuto:true, notes:""}
       ],
       days: [],
       budget: { fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 },
-      fuel: { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 },
+      budgetCurrency: { fuel:"GBP", ferry:"GBP", tolls:"EUR", accommodation:"EUR", food:"EUR", activities:"EUR", misc:"GBP" },
+      fuel: { efficiency: 45, efficiencyUnit: "mpg", prices: { GBP: 1.55, EUR: 1.70 } },
       packingList: [
         {id: uid(), text:"Passports (valid 6+ months)", done:false},
         {id: uid(), text:"GB sticker or GB on numberplate", done:false},
@@ -357,10 +381,11 @@
     };
   }
   function blankTrip(){
-    return { name:"New trip", startDate:"", endDate:"", currency:"GBP", travelers:2,
+    return { name:"New trip", startDate:"", endDate:"", currencies:["GBP"], rates:{}, travelers:2,
       countries:[], preferences:[], legs:[], days:[],
       budget:{ fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 },
-      fuel: { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 },
+      budgetCurrency: { fuel:"GBP", ferry:"GBP", tolls:"GBP", accommodation:"GBP", food:"GBP", activities:"GBP", misc:"GBP" },
+      fuel: { efficiency: 45, efficiencyUnit: "mpg", prices: { GBP: 1.55 } },
       packingList: [], geoV2: {}, updatedAt: Date.now() };
   }
 
@@ -475,7 +500,22 @@
 
   function normalizeTrip(t){
     if (!t.budget) t.budget = { fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 };
-    if (!t.fuel) t.fuel = { efficiency: 45, efficiencyUnit: "mpg", price: 1.55 };
+    if (!t.currencies){ t.currencies = t.currency ? [t.currency] : ['GBP']; }
+    if (!t.rates) t.rates = {};
+    if (!t.budgetCurrency){
+      t.budgetCurrency = {};
+      Object.keys(t.budget).forEach(k => { t.budgetCurrency[k] = t.currencies[0]; });
+    }
+    if (!t.fuel) t.fuel = { efficiency: 45, efficiencyUnit: "mpg", prices: {} };
+    if (!t.fuel.prices){
+      t.fuel.prices = {};
+      t.currencies.forEach((c,i) => { t.fuel.prices[c] = i===0 ? (t.fuel.price||1.5) : 1.6; });
+    }
+    t.currencies.forEach(c => { if (t.fuel.prices[c] == null) t.fuel.prices[c] = 0; });
+    (t.legs||[]).forEach(l => {
+      if (!l.costCurrency) l.costCurrency = t.currencies[0];
+      if (l.costCurrencyAuto === undefined) l.costCurrencyAuto = true;
+    });
     if (!t.packingList) t.packingList = [];
     if (!t.geoV2) t.geoV2 = {};
     if (!t.days) t.days = [];
@@ -577,21 +617,18 @@
   // ---------- trip panel rendering ----------
   function renderTripPanel(){
     const d = state.draft;
-    const sym = CURRENCY_SYM[d.currency] || d.currency || '';
     tripPanelEl.innerHTML = `
       <div class="trip-head">
         <input class="trip-name" id="fName" value="${esc(d.name)}" placeholder="Trip name" />
         <div class="trip-meta-row">
           <label>From <input type="date" id="fStart" value="${esc(d.startDate)}"></label>
           <label>To <input type="date" id="fEnd" value="${esc(d.endDate)}"></label>
-          <label>Currency
-            <select id="fCurrency">
-              ${['GBP','EUR','USD'].map(c => `<option value="${c}" ${c===d.currency?'selected':''}>${c}</option>`).join('')}
-            </select>
-          </label>
           <label>Travellers <input type="number" min="1" id="fTravelers" value="${d.travelers||1}" style="width:52px"></label>
         </div>
-        <div class="chip-row" id="prefChips">
+        <div class="chip-row" id="currencyChips"></div>
+        <div class="add-country"><span style="color:var(--ink-faint);font-size:12.5px">+</span><input id="fCurrencyAdd" style="width:90px;text-transform:uppercase" placeholder="e.g. CHF" maxlength="3"><span style="font-size:11px;color:var(--ink-faint);margin-left:8px">the first currency you add is treated as home — used for the trip total</span></div>
+        <div id="ratesPanel" style="margin-top:8px;"></div>
+        <div class="chip-row" id="prefChips" style="margin-top:14px;">
           ${PREFS.map(p => `<span class="chip ${d.preferences.includes(p)?'on':''}" data-pref="${esc(p)}">${esc(p)}</span>`).join('')}
         </div>
         <div class="chip-row" id="countryChips">
@@ -644,8 +681,29 @@
     document.getElementById('fName').addEventListener('input', e => { d.name = e.target.value; scheduleSave(); });
     document.getElementById('fStart').addEventListener('change', e => { d.startDate = e.target.value; scheduleSave(); });
     document.getElementById('fEnd').addEventListener('change', e => { d.endDate = e.target.value; scheduleSave(); });
-    document.getElementById('fCurrency').addEventListener('change', e => { d.currency = e.target.value; scheduleSave(); renderBudget(); });
     document.getElementById('fTravelers').addEventListener('input', e => { d.travelers = Math.max(1, parseInt(e.target.value)||1); scheduleSave(); renderTotals(); });
+    document.getElementById('fCurrencyAdd').addEventListener('keydown', async e => {
+      if (e.key === 'Enter' && e.target.value.trim()){
+        const code = e.target.value.trim().toUpperCase().slice(0,3);
+        e.target.value = '';
+        if (!d.currencies.includes(code)){
+          d.currencies.push(code);
+          if (d.fuel.prices[code] == null) d.fuel.prices[code] = 0;
+          scheduleSave();
+          renderCurrencySection();
+          renderFuelCalc();
+          renderBudget();
+          renderLegs();
+          try{
+            const rate = await fetchRate(code, d.currencies[0]);
+            d.rates[code] = Math.round(rate*10000)/10000;
+            scheduleSave();
+            renderRatesPanel();
+            renderTotals();
+          }catch(err){ /* leave blank, user can enter manually */ }
+        }
+      }
+    });
 
     document.getElementById('prefChips').querySelectorAll('.chip').forEach(chip => {
       chip.addEventListener('click', () => {
@@ -667,7 +725,7 @@
     });
 
     document.getElementById('addLegBtn').addEventListener('click', () => {
-      d.legs.push({id: uid(), from: d.legs.length ? d.legs[d.legs.length-1].to : '', to:'', mode:'drive', distanceKm:0, hours:0, cost:0, notes:''});
+      d.legs.push({id: uid(), from: d.legs.length ? d.legs[d.legs.length-1].to : '', to:'', mode:'drive', distanceKm:0, hours:0, cost:0, costCurrency: d.currencies[0], costCurrencyAuto: true, notes:''});
       scheduleSave();
       renderLegs();
     });
@@ -699,6 +757,7 @@
 
     document.getElementById('updateMapBtn').addEventListener('click', () => { updateMap(); });
 
+    renderCurrencySection();
     renderLegs();
     renderDays();
     renderWeather();
@@ -725,6 +784,137 @@
     });
   }
 
+  function renderCurrencySection(){
+    const d = state.draft;
+    const host = document.getElementById('currencyChips');
+    if (!host) return;
+    host.innerHTML = d.currencies.map((c,i) => `
+      <span class="chip on currency" data-i="${i}">${c}${i===0 ? ' <span style="opacity:.65">★ home</span>' : ' <span class="rm" data-action="home" data-i="'+i+'" title="Set as home currency">★</span> <span class="rm" data-action="remove" data-i="'+i+'" title="Remove">✕</span>'}</span>
+    `).join('');
+    host.querySelectorAll('[data-action="remove"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const i = parseInt(btn.dataset.i);
+        const [removed] = d.currencies.splice(i,1);
+        delete d.rates[removed];
+        delete d.fuel.prices[removed];
+        d.legs.forEach(l => { if (l.costCurrency === removed) l.costCurrency = d.currencies[0]; });
+        Object.keys(d.budgetCurrency||{}).forEach(k => { if (d.budgetCurrency[k] === removed) d.budgetCurrency[k] = d.currencies[0]; });
+        scheduleSave();
+        renderCurrencySection(); renderFuelCalc(); renderBudget(); renderLegs();
+      });
+    });
+    host.querySelectorAll('[data-action="home"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const i = parseInt(btn.dataset.i);
+        const [c] = d.currencies.splice(i,1);
+        d.currencies.unshift(c);
+        scheduleSave();
+        renderCurrencySection(); renderFuelCalc(); renderBudget(); renderLegs(); renderTotals();
+      });
+    });
+    renderRatesPanel();
+  }
+
+  function renderRatesPanel(){
+    const d = state.draft;
+    const host = document.getElementById('ratesPanel');
+    if (!host) return;
+    const home = d.currencies[0];
+    const others = d.currencies.slice(1);
+    if (!others.length){ host.innerHTML = ''; return; }
+    host.innerHTML = others.map(c => `
+      <div class="budget-row" data-cur="${c}" style="justify-content:flex-start;gap:10px;">
+        <label style="min-width:80px">1 ${c} =</label>
+        <input type="number" step="0.0001" min="0" class="rateInput" value="${d.rates[c]!=null?d.rates[c]:''}" placeholder="rate" style="width:80px;background:var(--panel-2);border:1px solid var(--panel-edge);border-radius:6px;padding:5px 7px;">
+        <span style="font-size:12.5px;color:var(--ink-dim)">${home}</span>
+        <button class="icon-btn refreshRate" title="Fetch latest rate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M4.5 15a8 8 0 0 0 14 3.5M19.5 9A8 8 0 0 0 5.5 5.5"/></svg></button>
+      </div>`).join('');
+    host.querySelectorAll('.rateInput').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const c = inp.closest('[data-cur]').dataset.cur;
+        d.rates[c] = parseFloat(inp.value)||0;
+        scheduleSave();
+        renderTotals();
+      });
+    });
+    host.querySelectorAll('.refreshRate').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const c = btn.closest('[data-cur]').dataset.cur;
+        btn.disabled = true;
+        try{
+          const rate = await fetchRate(c, home);
+          d.rates[c] = Math.round(rate*10000)/10000;
+          scheduleSave();
+          renderRatesPanel();
+          renderTotals();
+        }catch(e){
+          alert('Could not fetch a live rate right now — enter it manually.');
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function fetchRate(from, to){
+    if (from === to) return 1;
+    const res = await fetch('https://api.frankfurter.dev/v2/rate/'+encodeURIComponent(from)+'/'+encodeURIComponent(to));
+    const json = await res.json();
+    if (json && typeof json.rate === 'number') return json.rate;
+    throw new Error('rate not found');
+  }
+  function convertToHome(amount, currency, d){
+    const home = d.currencies[0];
+    if (!currency || currency === home) return amount;
+    const rate = d.rates[currency];
+    return (typeof rate === 'number' && rate > 0) ? amount * rate : amount;
+  }
+  function haversineKm(a, b){
+    const R = 6371, toRad = x => x*Math.PI/180;
+    const dLat = toRad(b.lat-a.lat), dLon = toRad(b.lon-a.lon);
+    const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  async function osrmRoute(a, b){
+    const url = `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!json.routes || !json.routes.length) throw new Error('no route');
+    return { distanceKm: json.routes[0].distance/1000, hours: json.routes[0].duration/3600 };
+  }
+  async function calcLegDistanceTime(leg, btnEl){
+    const d = state.draft;
+    if (!leg.from.trim() || !leg.to.trim()){ alert('Fill in both the From and To cities first.'); return; }
+    const original = btnEl.innerHTML;
+    btnEl.disabled = true; btnEl.innerHTML = '…';
+    try{
+      const a = await geocode(leg.from);
+      const b = await geocode(leg.to);
+      if (leg.costCurrencyAuto !== false){
+        const cur = currencyForCountry(extractCountry(b.label));
+        if (cur && d.currencies.includes(cur)) leg.costCurrency = cur;
+      }
+      if (leg.mode === 'drive' || leg.mode === 'train'){
+        try{
+          const route = await osrmRoute(a, b);
+          leg.distanceKm = Math.round(route.distanceKm);
+          leg.hours = Math.round(route.hours*10)/10;
+        }catch(e){
+          leg.distanceKm = Math.round(haversineKm(a,b));
+        }
+      } else {
+        leg.distanceKm = Math.round(haversineKm(a,b));
+      }
+      scheduleSave();
+      renderLegs();
+    }catch(e){
+      alert("Couldn't find one of those places — check the spelling, or enter distance/time manually.");
+      btnEl.disabled = false; btnEl.innerHTML = original;
+    }
+  }
+
   function litersPer100(eff, unit){
     if (!eff || eff <= 0) return 0;
     return unit === 'mpg' ? 282.481/eff : eff;
@@ -732,14 +922,19 @@
 
   function renderFuelCalc(){
     const d = state.draft;
-    const sym = CURRENCY_SYM[d.currency] || d.currency || '';
     const host = document.getElementById('fuelCalc');
     if (!host) return;
-    const driveKm = (d.legs||[]).filter(l => l.mode === 'drive').reduce((s,l) => s + (parseFloat(l.distanceKm)||0), 0);
     const f = d.fuel;
+    d.currencies.forEach(c => { if (f.prices[c] == null) f.prices[c] = 0; });
+    const driveLegs = (d.legs||[]).filter(l => l.mode === 'drive');
+    const driveKm = driveLegs.reduce((s,l) => s + (parseFloat(l.distanceKm)||0), 0);
     const l100 = litersPer100(f.efficiency, f.efficiencyUnit);
-    const liters = driveKm/100 * l100;
-    const cost = liters * (f.price||0);
+    const byCurrency = {};
+    driveLegs.forEach(l => {
+      const cur = l.costCurrency || d.currencies[0];
+      const liters = (parseFloat(l.distanceKm)||0)/100 * l100;
+      byCurrency[cur] = (byCurrency[cur]||0) + liters * (f.prices[cur]||0);
+    });
     host.innerHTML = `
       <div class="budget-row" style="flex-wrap:wrap;gap:14px 20px;justify-content:flex-start;">
         <span style="font-size:13px;color:var(--ink-dim)">Driving distance: <b style="color:var(--ink)">${driveKm.toFixed(0)} km</b></span>
@@ -750,22 +945,33 @@
             <option value="lkm" ${f.efficiencyUnit==='lkm'?'selected':''}>L/100km</option>
           </select>
         </label>
-        <label style="font-size:12.5px;color:var(--ink-dim);display:flex;align-items:center;gap:5px">Price per litre ${sym}
-          <input type="number" min="0" step="0.01" id="fuelPrice" value="${f.price}" style="width:64px;background:var(--panel-2);border:1px solid var(--panel-edge);border-radius:6px;padding:4px 6px;">
-        </label>
       </div>
-      <div class="totals-bar" style="margin-top:12px;padding-top:12px;">
-        <div class="tstat"><div class="label">Estimated fuel</div><div class="val" style="font-size:26px">${sym}${cost.toFixed(0)}</div></div>
-        <button class="ghost-btn" id="applyFuelBtn" style="margin-left:auto">Apply to Fuel budget</button>
+      <div class="budget-grid" style="margin-top:10px;">
+        ${d.currencies.map(c => `
+          <div class="budget-row">
+            <label>Price per litre (${c})</label>
+            <span class="amt">${CURRENCY_SYM[c]||c} <input type="number" min="0" step="0.01" class="fuelPriceInput" data-cur="${c}" value="${f.prices[c]}"></span>
+          </div>`).join('')}
       </div>
+      <div class="totals-bar" style="margin-top:12px;padding-top:12px;flex-wrap:wrap;">
+        ${Object.keys(byCurrency).length ? Object.entries(byCurrency).map(([c,v]) => `<div class="tstat"><div class="label">Est. fuel (${c})</div><div class="val" style="font-size:22px">${CURRENCY_SYM[c]||c}${v.toFixed(0)}</div></div>`).join('') : '<span style="font-size:12.5px;color:var(--ink-faint)">Add some drive legs to estimate fuel cost.</span>'}
+        <button class="ghost-btn" id="applyFuelBtn" style="margin-left:auto">Apply to drive legs</button>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-faint);margin-top:8px;">Applies per leg using each leg's own currency — UK legs use the UK price, continental legs use the euro price (or whichever you've set).</p>
     `;
     document.getElementById('fuelEff').addEventListener('input', e => { f.efficiency = parseFloat(e.target.value)||0; scheduleSave(); renderFuelCalc(); });
     document.getElementById('fuelEffUnit').addEventListener('change', e => { f.efficiencyUnit = e.target.value; scheduleSave(); renderFuelCalc(); });
-    document.getElementById('fuelPrice').addEventListener('input', e => { f.price = parseFloat(e.target.value)||0; scheduleSave(); renderFuelCalc(); });
+    host.querySelectorAll('.fuelPriceInput').forEach(inp => {
+      inp.addEventListener('input', () => { f.prices[inp.dataset.cur] = parseFloat(inp.value)||0; scheduleSave(); renderFuelCalc(); });
+    });
     document.getElementById('applyFuelBtn').addEventListener('click', () => {
-      d.budget.fuel = Math.round(cost);
+      driveLegs.forEach(l => {
+        const cur = l.costCurrency || d.currencies[0];
+        const liters = (parseFloat(l.distanceKm)||0)/100 * l100;
+        l.cost = Math.round(liters * (f.prices[cur]||0));
+      });
       scheduleSave();
-      renderBudget();
+      renderLegs();
     });
   }
 
@@ -911,7 +1117,7 @@
   }
 
   // ---------- map ----------
-  let leafletMap = null, markerLayer = null, lineLayer = null;
+  let leafletMap = null, markerLayer = null, lineLayer = null, legendEl = null;
 
   function computeStops(d){
     if (!d.legs || !d.legs.length) return [];
@@ -955,15 +1161,90 @@
       if (g){
         pts.push([g.lat, g.lon]);
         const tag = i === 0 ? ' (start)' : (i === stops.length - 1 ? ' (finish)' : '');
-        L.marker([g.lat, g.lon]).addTo(markerLayer).bindPopup(`<b>${esc(s)}</b>${tag}`);
+        L.marker([g.lat, g.lon]).addTo(markerLayer).bindPopup(`<b>${i + 1}. ${esc(s)}</b>${tag}`);
       } else if (missing.indexOf(s) === -1){
         missing.push(s);
       }
     });
+
+    // ---- directional legs: outbound vs return ----
+    const css = getComputedStyle(document.documentElement);
+    const outColor = css.getPropertyValue('--route').trim() || '#3E7C6E';
+    const backColor = css.getPropertyValue('--accent').trim() || '#C67A2B';
+
+    // Stops in order, with coordinates (null if not geocoded yet)
+    const seq = stops.map(s => { const g = geo[s.toLowerCase()]; return g ? { name: s, lat: g.lat, lon: g.lon } : null; });
+    const first = seq.find(Boolean);
+    // Turnaround = the stop furthest from the start. Everything up to it is "outbound", the rest "return".
+    let turnIdx = seq.length - 1;
+    if (first){
+      let best = -1;
+      seq.forEach((p, i) => {
+        if (!p) return;
+        const dist = Math.hypot(p.lat - first.lat, (p.lon - first.lon) * Math.cos(first.lat * Math.PI / 180));
+        if (dist > best){ best = dist; turnIdx = i; }
+      });
+    }
+
+    const merc = (p) => L.Projection.SphericalMercator.project(L.latLng(p.lat, p.lon));
+    lineLayer = L.featureGroup().addTo(map);
+    let hasReturn = false;
+    for (let i = 0; i < seq.length - 1; i++){
+      const a = seq[i], b = seq[i + 1];
+      if (!a || !b) continue;
+      const isReturn = i >= turnIdx;
+      if (isReturn) hasReturn = true;
+      const color = isReturn ? backColor : outColor;
+      const mode = ((d.legs[i] && d.legs[i].mode) || 'drive');
+
+      // Curve each leg to the right of its direction of travel, so out and back
+      // separate instead of sitting on top of each other.
+      const A = merc(a), B = merc(b);
+      const dx = B.x - A.x, dy = B.y - A.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const bow = 0.16 * len;
+      const C = L.point((A.x + B.x) / 2 + (dy / len) * bow, (A.y + B.y) / 2 - (dx / len) * bow);
+      const curve = [];
+      const N = 28;
+      for (let k = 0; k <= N; k++){
+        const t = k / N, u = 1 - t;
+        const x = u * u * A.x + 2 * u * t * C.x + t * t * B.x;
+        const y = u * u * A.y + 2 * u * t * C.y + t * t * B.y;
+        curve.push(L.Projection.SphericalMercator.unproject(L.point(x, y)));
+      }
+      const dashed = mode !== 'drive';
+      L.polyline(curve, { color, weight: 4, opacity: 0.9, dashArray: dashed ? '2 9' : null, lineCap: 'round' })
+        .addTo(lineLayer)
+        .bindTooltip(`${i + 1}. ${esc(a.name)} → ${esc(b.name)} · ${isReturn ? 'return' : 'outbound'}`, { sticky: true });
+
+      // Arrowhead at the midpoint, aimed along the curve's tangent (t = 0.5)
+      const tx = (C.x - A.x) + (B.x - C.x), ty = (C.y - A.y) + (B.y - C.y);
+      const deg = Math.atan2(-ty, tx) * 180 / Math.PI;
+      const mid = L.Projection.SphericalMercator.unproject(L.point(
+        0.25 * A.x + 0.5 * C.x + 0.25 * B.x, 0.25 * A.y + 0.5 * C.y + 0.25 * B.y));
+      L.marker(mid, {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({
+          className: 'leg-arrow-icon', iconSize: [20, 20], iconAnchor: [10, 10],
+          html: `<svg width="20" height="20" viewBox="-10 -10 20 20" style="transform:rotate(${deg}deg)"><path d="M-6 -6 L7 0 L-6 6 L-2 0 Z" fill="${color}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`
+        })
+      }).addTo(lineLayer);
+    }
+
+    // Legend
+    if (!legendEl){
+      const Legend = L.Control.extend({
+        options: { position: 'bottomleft' },
+        onAdd(){ legendEl = L.DomUtil.create('div', 'map-legend'); return legendEl; }
+      });
+      new Legend().addTo(map);
+    }
+    legendEl.innerHTML = hasReturn
+      ? `<div><span class="sw" style="border-color:${outColor}"></span>Outbound</div><div><span class="sw" style="border-color:${backColor}"></span>Return</div>`
+      : `<div><span class="sw" style="border-color:${outColor}"></span>Route (arrows show direction)</div>`;
+
     if (pts.length > 1){
-      const routeColor = getComputedStyle(document.documentElement).getPropertyValue('--route').trim() || '#3E7C6E';
-      lineLayer = L.polyline(pts, { color: routeColor, weight: 3 }).addTo(map);
-      map.fitBounds(lineLayer.getBounds().pad(0.2));
+      map.fitBounds(L.latLngBounds(pts).pad(0.25));
     } else if (pts.length === 1){
       map.setView(pts[0], 7);
     }
@@ -980,6 +1261,19 @@
     for (const s of stops){
       try{ await geocode(s); } catch(e){ /* leave as missing, shown after draw */ }
     }
+    let currencyChanged = false;
+    for (const leg of (d.legs||[])){
+      if (leg.costCurrencyAuto === false || !leg.to || !leg.to.trim()) continue;
+      const key = leg.to.trim().toLowerCase();
+      const g = d.geoV2 && d.geoV2[key];
+      if (!g) continue;
+      const cur = currencyForCountry(extractCountry(g.label));
+      if (cur && d.currencies.includes(cur) && leg.costCurrency !== cur){
+        leg.costCurrency = cur;
+        currencyChanged = true;
+      }
+    }
+    if (currencyChanged){ scheduleSave(); renderLegs(); }
     drawMapFromCache();
   }
 
@@ -1019,9 +1313,13 @@
           </div>
         </div>
         <div class="leg-row2">
-          <span class="field">dist <input type="number" min="0" data-f="distanceKm" value="${leg.distanceKm||0}"> km</span>
+          <span class="field">dist <input type="number" min="0" data-f="distanceKm" value="${leg.distanceKm||0}"> km${(leg.mode!=='drive'&&leg.mode!=='train') ? '<span style="color:var(--ink-faint);font-size:11px;margin-left:2px">(straight-line)</span>' : ''}</span>
           <span class="field"><input type="number" min="0" step="0.5" data-f="hours" value="${leg.hours||0}"> hrs</span>
-          <span class="field">${CURRENCY_SYM[d.currency]||''} <input type="number" min="0" data-f="cost" value="${leg.cost||0}"></span>
+          <button class="icon-btn calcLeg" title="Auto-calculate distance &amp; time" data-idx="${idx}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M4.5 15a8 8 0 0 0 14 3.5M19.5 9A8 8 0 0 0 5.5 5.5"/></svg></button>
+          <span class="field">Cost
+            <select class="costCur" data-idx="${idx}">${d.currencies.map(c => `<option value="${c}" ${c===(leg.costCurrency||d.currencies[0])?'selected':''}>${c}</option>`).join('')}</select>
+            <input type="number" min="0" data-f="cost" value="${leg.cost||0}">
+          </span>
           <input class="notes" data-f="notes" value="${esc(leg.notes)}" placeholder="notes…">
           ${(leg.mode==='ferry'||leg.mode==='tunnel') ? `<a class="field" style="color:var(--crossing)" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent((leg.mode==='tunnel'?'Eurotunnel':'ferry')+' '+leg.from+' to '+leg.to+' prices'+(d.startDate?' '+d.startDate:''))}">Check current prices</a>` : ''}
         </div>
@@ -1046,6 +1344,13 @@
           }
           if (field === 'cost') renderTotals();
         });
+      });
+      el.querySelector('.calcLeg').addEventListener('click', () => calcLegDistanceTime(leg, el.querySelector('.calcLeg')));
+      el.querySelector('.costCur').addEventListener('change', (e) => {
+        leg.costCurrency = e.target.value;
+        leg.costCurrencyAuto = false;
+        scheduleSave();
+        renderTotals();
       });
       el.querySelector('.removeleg').addEventListener('click', () => { d.legs.splice(idx,1); scheduleSave(); renderLegs(); renderTotals(); drawMapFromCache(); });
       el.querySelector('.moveup').addEventListener('click', () => { if(idx>0){ [d.legs[idx-1],d.legs[idx]]=[d.legs[idx],d.legs[idx-1]]; scheduleSave(); renderLegs(); }});
@@ -1088,34 +1393,64 @@
 
   function renderBudget(){
     const d = state.draft;
-    const sym = CURRENCY_SYM[d.currency] || d.currency || '';
     const cats = [['fuel','Fuel'],['ferry','Ferry / Tunnel'],['tolls','Tolls'],['accommodation','Accommodation'],['food','Food & drink'],['activities','Activities'],['misc','Misc']];
     const grid = document.getElementById('budgetGrid');
     grid.innerHTML = cats.map(([key,label]) => `
       <div class="budget-row">
         <label>${label}</label>
-        <span class="amt">${sym}<input type="number" min="0" data-cat="${key}" value="${d.budget[key]||0}"></span>
+        <span class="amt">
+          <select class="budgetCur" data-cat="${key}">${d.currencies.map(c => `<option value="${c}" ${c===(d.budgetCurrency[key]||d.currencies[0])?'selected':''}>${c}</option>`).join('')}</select>
+          <input type="number" min="0" data-cat="${key}" value="${d.budget[key]||0}">
+        </span>
       </div>`).join('');
-    grid.querySelectorAll('[data-cat]').forEach(inp => {
+    grid.querySelectorAll('input[data-cat]').forEach(inp => {
       inp.addEventListener('input', () => { d.budget[inp.dataset.cat] = parseFloat(inp.value)||0; scheduleSave(); renderTotals(); });
+    });
+    grid.querySelectorAll('select.budgetCur').forEach(sel => {
+      sel.addEventListener('change', () => { d.budgetCurrency[sel.dataset.cat] = sel.value; scheduleSave(); renderTotals(); });
     });
     renderTotals();
   }
 
   function renderTotals(){
     const d = state.draft;
-    const sym = CURRENCY_SYM[d.currency] || d.currency || '';
-    const legTotal = (d.legs||[]).reduce((s,l) => s + (parseFloat(l.cost)||0), 0);
-    const budgetTotal = Object.values(d.budget||{}).reduce((s,v) => s + (parseFloat(v)||0), 0);
-    const grand = legTotal + budgetTotal;
+    const home = d.currencies[0];
+    const sym = CURRENCY_SYM[home] || home;
+    const bySpend = {};
+    let missingRate = false;
+    let legTotalHome = 0;
+    (d.legs||[]).forEach(l => {
+      const cur = l.costCurrency || home;
+      const amt = parseFloat(l.cost)||0;
+      bySpend[cur] = (bySpend[cur]||0) + amt;
+      if (cur !== home && (d.rates[cur]==null || d.rates[cur]<=0) && amt>0) missingRate = true;
+      legTotalHome += convertToHome(amt, cur, d);
+    });
+    let budgetTotalHome = 0;
+    Object.entries(d.budget||{}).forEach(([key,amt]) => {
+      const cur = (d.budgetCurrency && d.budgetCurrency[key]) || home;
+      const v = parseFloat(amt)||0;
+      bySpend[cur] = (bySpend[cur]||0) + v;
+      if (cur !== home && (d.rates[cur]==null || d.rates[cur]<=0) && v>0) missingRate = true;
+      budgetTotalHome += convertToHome(v, cur, d);
+    });
+    const grand = legTotalHome + budgetTotalHome;
     const perPerson = grand / Math.max(1, d.travelers||1);
     const bar = document.getElementById('totalsBar');
     if (!bar) return;
+    let breakdown = '';
+    if (d.currencies.length > 1){
+      const parts = Object.entries(bySpend).filter(([,v]) => v > 0).map(([c,v]) => `${CURRENCY_SYM[c]||c}${v.toFixed(0)}`);
+      if (parts.length){
+        breakdown = `<div style="width:100%;font-size:11.5px;color:var(--ink-faint);margin-top:6px;">Raw spend: ${parts.join(' + ')}${missingRate ? ' — set an exchange rate above for an accurate total' : ''}</div>`;
+      }
+    }
     bar.innerHTML = `
-      <div class="tstat"><div class="label">Route costs</div><div class="val">${sym}${legTotal.toFixed(0)}</div></div>
-      <div class="tstat"><div class="label">Other budget</div><div class="val">${sym}${budgetTotal.toFixed(0)}</div></div>
-      <div class="tstat grand"><div class="label">Trip total</div><div class="val">${sym}${grand.toFixed(0)}</div></div>
+      <div class="tstat"><div class="label">Route costs</div><div class="val">${sym}${legTotalHome.toFixed(0)}</div></div>
+      <div class="tstat"><div class="label">Other budget</div><div class="val">${sym}${budgetTotalHome.toFixed(0)}</div></div>
+      <div class="tstat grand"><div class="label">Trip total (${home})</div><div class="val">${sym}${grand.toFixed(0)}</div></div>
       <div class="tstat"><div class="label">Per person</div><div class="val" style="font-size:20px">${sym}${perPerson.toFixed(0)}</div></div>
+      ${breakdown}
     `;
   }
 
