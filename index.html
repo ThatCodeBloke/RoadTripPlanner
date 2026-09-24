@@ -215,6 +215,12 @@
   .leg-row2 input.notes:focus { outline:none; border-bottom-color: var(--panel-edge); }
   .leg-controls { display:flex; gap:2px; margin-left:auto; }
 
+  .auto-chip {
+    font-size: 11px; line-height: 1.5; padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid var(--panel-edge); background: none; color: var(--ink-faint);
+  }
+  .auto-chip.on { background: var(--route-soft); border-color: var(--route); color: var(--ink); cursor: help; }
+  .auto-chip.off:hover { border-color: var(--route); color: var(--ink); }
   .ghost-btn {
     background: none; border: 1px dashed var(--panel-edge); border-radius: 8px;
     padding: 9px 14px; font-size: 13px; color: var(--ink-dim); margin-left: 30px;
@@ -239,6 +245,23 @@
     border-radius: 6px; padding: 9px; font-size: 13px; resize: vertical; line-height: 1.5;
   }
 
+  .day-overview { display:grid; gap: 6px; margin-bottom: 16px; }
+  .day-row {
+    display:grid; grid-template-columns: 150px 1fr; gap: 4px 12px; align-items: baseline; text-align: left;
+    background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 8px; padding: 8px 12px; width: 100%;
+  }
+  .day-row:hover { border-color: var(--accent); }
+  .day-row.active { border-color: var(--accent); background: var(--accent-soft); }
+  .day-row .when { font-size: 12.5px; color: var(--ink-dim); }
+  .day-row .where { font-size: 14px; display:flex; flex-wrap:wrap; gap: 2px 7px; align-items: baseline; }
+  .day-row .where .arr { color: var(--ink-faint); font-size: 12px; }
+  .day-row .where .dim { color: var(--ink-faint); font-size: 12.5px; }
+  .day-row .near { grid-column: 2; font-size: 11.5px; color: var(--ink-faint); }
+  @media (max-width: 560px) { .day-row { grid-template-columns: 1fr; } .day-row .near { grid-column: 1; } }
+  .est-note { font-size: 11.5px; color: var(--ink-faint); margin: 0 0 10px; line-height: 1.5; }
+  .day-est { font-size: 13px; color: var(--ink-dim); margin-bottom: 12px; line-height: 1.6; }
+  .day-est b { color: var(--ink); font-weight: 500; }
+  .linklike { background: none; border: none; padding: 0; margin-left: 6px; font-size: 12px; color: var(--route); text-decoration: underline; }
   .budget-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 16px; }
   @media (max-width: 520px) { .budget-grid { grid-template-columns: 1fr; } }
   .budget-row { display:flex; align-items:center; justify-content: space-between; gap: 10px;
@@ -334,6 +357,254 @@
   function extractCountry(label){
     const parts = (label||'').split(',');
     return parts.length ? parts[parts.length-1].trim() : '';
+  }
+
+  // ---------- automatic leg costs ----------
+  // Fuel is worked out from distance x efficiency x pump price. Ferry / tunnel fares can't be fetched live
+  // (no free, keyless API exists for them), so they're estimated from typical published fares, adjusted for
+  // the time of year. Always an estimate: the "Check current prices" link on each leg is the real number.
+  const AUTO_MODES = ['drive','ferry','tunnel'];
+
+  const PORTS = {
+    dover:['dover'], calais:['calais','coquelles'], dunkirk:['dunkirk','dunkerque'], folkestone:['folkestone'],
+    newhaven:['newhaven'], dieppe:['dieppe'], portsmouth:['portsmouth'], caen:['caen','ouistreham'],
+    cherbourg:['cherbourg'], lehavre:['le havre','havre'], stmalo:['st malo','saint-malo','saint malo','st-malo'],
+    poole:['poole'], plymouth:['plymouth'], roscoff:['roscoff'], santander:['santander'], bilbao:['bilbao']
+  };
+  // One-way, standard car + up to 2 adults, off-peak, GBP. Rounded from operator "from" prices (2026).
+  const ROUTES = [
+    { a:'dover', b:'calais', gbp:90, label:'Dover–Calais ferry' },
+    { a:'dover', b:'dunkirk', gbp:90, label:'Dover–Dunkirk ferry' },
+    { a:'newhaven', b:'dieppe', gbp:120, label:'Newhaven–Dieppe ferry' },
+    { a:'portsmouth', b:'caen', gbp:130, label:'Portsmouth–Caen ferry' },
+    { a:'portsmouth', b:'cherbourg', gbp:140, label:'Portsmouth–Cherbourg ferry' },
+    { a:'portsmouth', b:'lehavre', gbp:120, label:'Portsmouth–Le Havre ferry' },
+    { a:'portsmouth', b:'stmalo', gbp:195, label:'Portsmouth–St Malo ferry' },
+    { a:'poole', b:'cherbourg', gbp:120, label:'Poole–Cherbourg ferry' },
+    { a:'plymouth', b:'roscoff', gbp:130, label:'Plymouth–Roscoff ferry' },
+    { a:'portsmouth', b:'santander', gbp:290, label:'Portsmouth–Santander ferry (cabin extra)' },
+    { a:'portsmouth', b:'bilbao', gbp:290, label:'Portsmouth–Bilbao ferry (cabin extra)' },
+    { a:'plymouth', b:'santander', gbp:290, label:'Plymouth–Santander ferry (cabin extra)' }
+  ];
+  const TUNNEL_GBP = 125; // LeShuttle "Standard" one-way, per car, up to 9 people
+
+  function portId(name){
+    const key = (name||'').split(',')[0].toLowerCase()
+      .replace(/\b(ferry|terminal|port|docks?|harbou?r|city|international)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!key) return '';
+    for (const id of Object.keys(PORTS)){
+      if (PORTS[id].some(al => key === al || key.includes(al))) return id;
+    }
+    return '';
+  }
+  function seasonFor(dateStr){
+    if (!dateStr || dateStr.length < 10) return { factor: 1, label: '' };
+    const md = parseInt(dateStr.slice(5,7),10) * 100 + parseInt(dateStr.slice(8,10),10);
+    if (md >= 1220 || md <= 103) return { factor: 1.4, label: 'Christmas / New Year' };
+    if (md >= 718 && md <= 831) return { factor: 1.5, label: 'summer holidays' };
+    if (md >= 1022 && md <= 1102) return { factor: 1.15, label: 'October half-term' };
+    if (md >= 524 && md <= 602) return { factor: 1.15, label: 'May half-term' };
+    if (md >= 1101 && md <= 1215) return { factor: 0.85, label: 'quiet season' };
+    if (md >= 104 && md <= 315) return { factor: 0.9, label: 'quiet season' };
+    return { factor: 1, label: '' };
+  }
+  function money(v, cur){ return (CURRENCY_SYM[cur] || (cur + ' ')) + v.toFixed(2); }
+  // Convert a GBP amount into another trip currency using the trip's own exchange rates (rates[c] = 1 c in home).
+  function gbpTo(amountGbp, cur, d){
+    if (cur === 'GBP') return amountGbp;
+    const home = d.currencies[0];
+    let gbpInHome = null;
+    if (home === 'GBP') gbpInHome = 1; else if (d.rates && d.rates.GBP > 0) gbpInHome = d.rates.GBP;
+    if (gbpInHome == null) return null;
+    const inHome = amountGbp * gbpInHome;
+    if (cur === home) return inHome;
+    const r = d.rates && d.rates[cur];
+    return r > 0 ? inHome / r : null;
+  }
+
+  function fuelEstimate(leg, d){
+    const cur = leg.costCurrency || d.currencies[0];
+    const l100 = litersPer100(d.fuel.efficiency, d.fuel.efficiencyUnit);
+    const km = parseFloat(leg.distanceKm) || 0;
+    const litres = km / 100 * l100;
+    const price = (d.fuel.prices && d.fuel.prices[cur]) || 0;
+    const note = price > 0
+      ? `Fuel: ${km} km at ${l100.toFixed(1)} L/100km = ${litres.toFixed(0)} L, at ${money(price, cur)} per litre.`
+      : `Set a fuel price for ${cur} in the fuel calculator to estimate this leg.`;
+    return { amount: litres * price, note };
+  }
+  function crossingEstimate(leg, d, dateStr){
+    if (!(leg.from||'').trim() || !(leg.to||'').trim()) return null;
+    const a = portId(leg.from), b = portId(leg.to);
+    const route = ROUTES.find(r => (r.a === a && r.b === b) || (r.a === b && r.b === a));
+    let baseGbp, label, generic = false;
+    if (leg.mode === 'tunnel'){ baseGbp = TUNNEL_GBP; label = 'Eurotunnel (LeShuttle), one way per car'; }
+    else if (route){ baseGbp = route.gbp; label = route.label; }
+    else {
+      const km = parseFloat(leg.distanceKm) || 0;
+      baseGbp = km > 0 ? Math.round(45 + 0.6 * km) : 90;
+      label = 'Ferry (route not recognised)'; generic = true;
+    }
+    const season = seasonFor(dateStr);
+    const gbp = baseGbp * season.factor;
+    const cur = leg.costCurrency || d.currencies[0];
+    let amount = gbpTo(gbp, cur, d), conv = '';
+    if (amount == null){ amount = gbp; conv = ` No GBP exchange rate is set, so this is shown as £${gbp.toFixed(0)} unconverted.`; }
+    const note = `${label}: typically about £${baseGbp} for a car and passengers off-peak` +
+      (season.label ? `, x${season.factor} for ${season.label}` : '') +
+      (generic ? '. Rough guess from the distance' : '') +
+      `. This is an estimate, not a live price; use "Check current prices" for the real fare.` + conv;
+    return { amount, note };
+  }
+  function autoCostFor(leg, d, dateStr){
+    if (leg.mode === 'drive') return fuelEstimate(leg, d);
+    if (leg.mode === 'ferry' || leg.mode === 'tunnel') return crossingEstimate(leg, d, dateStr);
+    return null;
+  }
+  function applyAutoCosts(d, plan){
+    plan = plan || computeDayPlan(d);
+    let changed = false;
+    (d.legs||[]).forEach((leg, i) => {
+      if (leg.costAuto === false || !AUTO_MODES.includes(leg.mode)) return;
+      const est = autoCostFor(leg, d, plan.legDates[i]);
+      const v = est ? Math.round(est.amount) : 0;
+      if (leg.cost !== v){ leg.cost = v; changed = true; }
+    });
+    return changed;
+  }
+  // Ferries and the tunnel are sold in the home currency (UK operators sell in GBP); other legs follow the
+  // country you end up in, once that place has been looked up.
+  function autoCurrencyForLeg(leg, d){
+    if (leg.mode === 'ferry' || leg.mode === 'tunnel') return d.currencies[0];
+    const g = geoFor(d, leg.to);
+    if (!g) return null;
+    const cur = currencyForCountry(extractCountry(g.label));
+    return (cur && d.currencies.includes(cur)) ? cur : null;
+  }
+  function applyAutoCurrencies(d){
+    let changed = false;
+    (d.legs||[]).forEach(leg => {
+      if (leg.costCurrencyAuto === false) return;
+      const c = autoCurrencyForLeg(leg, d);
+      if (c && leg.costCurrency !== c){ leg.costCurrency = c; changed = true; }
+    });
+    return changed;
+  }
+
+  // ---------- day-by-day estimate ----------
+  function geoFor(d, name){
+    const key = (name||'').trim().toLowerCase();
+    if (!key) return null;
+    return (d && d.geoV2 && d.geoV2[key]) || geoCache[key] || null;
+  }
+  function countryFromLabel(label){
+    const i = (label||'').lastIndexOf(',');
+    return i < 0 ? '' : label.slice(i+1).trim();
+  }
+  // "United Kingdom" -> "England" when the trip's own country list says England
+  function displayCountry(name, d){
+    if (!name) return '';
+    const own = (d.countries||[]).find(c => countryMatches(c, name));
+    return own || name;
+  }
+  function shortName(n){ return (n||'').split(',')[0].trim(); }
+  function legWeight(l){
+    const h = parseFloat(l.hours) || 0;
+    if (h > 0) return h;
+    const km = parseFloat(l.distanceKm) || 0;
+    return km > 0 ? km / 80 : 1;
+  }
+
+  // Lays the legs out along a timeline of travel-hours, decides how far along that timeline each day ends
+  // (evenly spread over the dates, but pinned to any "Overnight in" the person has set), then reads off
+  // which countries the route passes through in each day's slice. Countries are taken from each leg's
+  // start and end points, with the border assumed halfway through the leg, so a country you only pass
+  // through (e.g. Belgium on the way from Luxembourg to Amsterdam) won't show up.
+  function computeDayPlan(d){
+    const legs = d.legs || [], days = d.days || [], N = days.length;
+    const H = [0];
+    legs.forEach(l => H.push(H[H.length-1] + legWeight(l)));
+    const T = H[H.length-1];
+    const rawNames = legs.length ? [(legs[0].from||'').trim()].concat(legs.map(l => (l.to||'').trim())) : [];
+    const lowNames = rawNames.map(n => n.toLowerCase());
+    const plan = { days: [], legDates: [], total: T, leftover: 0, missingGeo: 0 };
+    plan.missingGeo = new Set(lowNames.filter(n => n && !geoFor(d, n))).size;
+
+    // 1. where each day ends, in travel-hours
+    const E = new Array(N).fill(0);
+    if (N && legs.length){
+      const anchors = [];
+      let prevK = 0;
+      days.forEach((day, i) => {
+        const o = (day.overnight||'').trim().toLowerCase();
+        if (!o) return;
+        const nominal = T * (i+1) / N;
+        let bestK = -1, bestD = Infinity;
+        for (let k = prevK; k < lowNames.length; k++){
+          const nm = lowNames[k];
+          if (!nm || !(nm === o || nm.includes(o) || o.includes(nm))) continue;
+          const dd = Math.abs(H[k] - nominal);
+          if (dd < bestD){ bestD = dd; bestK = k; }
+        }
+        if (bestK >= 0){ anchors.push({ i, t: H[bestK] }); prevK = bestK; }
+      });
+      const pts = [{ i: -1, t: 0 }].concat(anchors);
+      if (!anchors.length || anchors[anchors.length-1].i < N-1) pts.push({ i: N-1, t: T });
+      for (let p = 0; p < pts.length-1; p++){
+        const a = pts[p], b = pts[p+1];
+        for (let i = a.i+1; i <= b.i; i++) E[i] = a.t + (b.t - a.t) * (i - a.i) / (b.i - a.i);
+      }
+      plan.leftover = Math.max(0, T - E[N-1]);
+    }
+
+    // 2. country "atoms" along the timeline
+    const countryOf = name => { const g = geoFor(d, name); return g ? displayCountry(countryFromLabel(g.label), d) : ''; };
+    const atoms = [];
+    legs.forEach((l, j) => {
+      const a = H[j], b = H[j+1];
+      const cf = countryOf(l.from), ct = countryOf(l.to);
+      if (cf && ct && cf !== ct){ const m = (a + b) / 2; atoms.push({ a, b: m, c: cf }, { a: m, b, c: ct }); }
+      else atoms.push({ a, b, c: cf || ct });
+    });
+    const countryAt = t => {
+      for (const at of atoms) if (at.c && at.a <= t + 1e-9 && t < at.b - 1e-9) return at.c;
+      for (let i = atoms.length - 1; i >= 0; i--) if (atoms[i].c && t >= atoms[i].b - 1e-9) return atoms[i].c;
+      return '';
+    };
+    const describeEnd = t => {
+      let bk = -1, bd = Infinity;
+      rawNames.forEach((n, k) => { if (!n) return; const dd = Math.abs(H[k] - t); if (dd < bd){ bd = dd; bk = k; } });
+      if (bk < 0) return { stop: '', near: '', suggest: '' };
+      const name = rawNames[bk];
+      if (bd <= 1.5) return { stop: name, near: (bd < 0.05 ? 'Ends at ' : 'Ends near ') + shortName(name), suggest: name };
+      let j = 0; while (j < legs.length - 1 && H[j+1] < t) j++;
+      return { stop: name, near: `Ends between ${shortName(rawNames[j])} and ${shortName(rawNames[j+1])}`, suggest: '' };
+    };
+
+    // 3. read off each day
+    days.forEach((day, i) => {
+      const ws = i === 0 ? 0 : E[i-1], we = E[i];
+      const list = [];
+      const add = c => { if (c && !list.includes(c)) list.push(c); };
+      if (legs.length){
+        if (we - ws > 1e-6) atoms.forEach(at => { if (Math.min(at.b, we) - Math.max(at.a, ws) > 1e-6) add(at.c); });
+        else add(countryAt(ws));
+      }
+      const og = geoFor(d, day.overnight);
+      if (og) add(displayCountry(countryFromLabel(og.label), d));
+      const end = legs.length ? describeEnd(we) : { stop: '', near: '', suggest: '' };
+      plan.days.push({ countries: list, hours: we - ws, near: end.near, stop: end.stop, suggest: end.suggest });
+    });
+
+    // 4. which day each leg falls on (for season-dependent fares)
+    legs.forEach((l, j) => {
+      const tm = (H[j] + H[j+1]) / 2;
+      let di = -1;
+      for (let i = 0; i < N; i++){ if (tm <= E[i] + 1e-9){ di = i; break; } }
+      if (di < 0 && N) di = N - 1;
+      plan.legDates.push(di >= 0 ? days[di].date : (d.startDate || ''));
+    });
+    return plan;
   }
 
   function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
@@ -465,7 +736,7 @@
       }
     },
     async saveTrip(id, data){
-      const payload = Object.assign({}, data, {updatedAt: Date.now()});
+      const payload = Object.assign({}, data, {updatedAt: data.updatedAt || Date.now()});
       delete payload.id;
       if (this.mode === 'firebase'){
         await this.fsdb.collection('trips').doc(id).set(payload);
@@ -522,6 +793,18 @@
     if (!t.legs) t.legs = [];
     if (!t.countries) t.countries = [];
     if (!t.preferences) t.preferences = [];
+    // Older trips have no auto flag: a leg is automatic if it's empty or already matches the estimate,
+    // otherwise the number was typed by hand and is left alone.
+    const plan = computeDayPlan(t);
+    t.legs.forEach((l, i) => {
+      if (l.costAuto !== undefined) return;
+      if (!AUTO_MODES.includes(l.mode)){ l.costAuto = false; return; }
+      const est = autoCostFor(l, t, plan.legDates[i]);
+      const cost = parseFloat(l.cost) || 0;
+      l.costAuto = cost === 0 || !!(est && Math.abs(Math.round(est.amount) - cost) <= 1);
+    });
+    applyAutoCurrencies(t);
+    applyAutoCosts(t, plan);
     return t;
   }
 
@@ -610,6 +893,10 @@
     if (!state.selectedId || !state.draft) return;
     clearTimeout(state.saveTimer);
     state.saveTimer = setTimeout(() => {
+      // Stamp the draft with the same time we save with, so the echo of our own write coming back from
+      // Firestore matches the draft and doesn't rebuild the whole panel (which used to wipe the map).
+      if (!state.draft || !state.selectedId) return;
+      state.draft.updatedAt = Date.now();
       Store.saveTrip(state.selectedId, state.draft);
     }, 500);
   }
@@ -651,6 +938,7 @@
 
       <section class="block">
         <div class="block-head"><h3>Day by day</h3><button class="ghost-btn" id="genDaysBtn" style="margin-left:auto">Generate days from dates</button></div>
+        <div id="dayOverview" class="day-overview"></div>
         <div class="day-tabs" id="dayTabs"></div>
         <div id="dayPanelHost"></div>
       </section>
@@ -661,12 +949,13 @@
       </section>
 
       <section class="block">
-        <div class="block-head"><h3>Fuel calculator</h3><span class="hint">estimates the drive-only legs, you apply it to the budget</span></div>
+        <div class="block-head"><h3>Fuel calculator</h3><span class="hint">fills in each drive leg's cost automatically</span></div>
         <div id="fuelCalc"></div>
       </section>
 
       <section class="block">
         <div class="block-head"><h3>Budget</h3><span class="hint">rough numbers now, real ones as you book</span></div>
+        <p class="est-note">Fuel for drive legs and fares for ferry/tunnel legs are estimated automatically in the Roadbook and counted under Route costs. Use the “extra” rows below only for spend that isn't tied to a leg.</p>
         <div class="budget-grid" id="budgetGrid"></div>
         <div class="totals-bar" id="totalsBar"></div>
       </section>
@@ -679,8 +968,8 @@
     `;
 
     document.getElementById('fName').addEventListener('input', e => { d.name = e.target.value; scheduleSave(); });
-    document.getElementById('fStart').addEventListener('change', e => { d.startDate = e.target.value; scheduleSave(); });
-    document.getElementById('fEnd').addEventListener('change', e => { d.endDate = e.target.value; scheduleSave(); });
+    document.getElementById('fStart').addEventListener('change', e => { d.startDate = e.target.value; scheduleSave(); refreshAuto(); });
+    document.getElementById('fEnd').addEventListener('change', e => { d.endDate = e.target.value; scheduleSave(); refreshAuto(); });
     document.getElementById('fTravelers').addEventListener('input', e => { d.travelers = Math.max(1, parseInt(e.target.value)||1); scheduleSave(); renderTotals(); });
     document.getElementById('fCurrencyAdd').addEventListener('keydown', async e => {
       if (e.key === 'Enter' && e.target.value.trim()){
@@ -699,7 +988,7 @@
             d.rates[code] = Math.round(rate*10000)/10000;
             scheduleSave();
             renderRatesPanel();
-            renderTotals();
+            refreshAuto();
           }catch(err){ /* leave blank, user can enter manually */ }
         }
       }
@@ -744,6 +1033,8 @@
       tripPanelEl.dataset.activeDay = '0';
       scheduleSave();
       renderDays();
+      refreshAuto();
+      renderWeather();
     });
 
     document.getElementById('fPackAdd').addEventListener('keydown', e => {
@@ -765,6 +1056,7 @@
     renderBudget();
     renderPacking();
     drawMapFromCache();
+    resolveTripPlaces();
   }
 
   function renderPacking(){
@@ -836,7 +1128,7 @@
         const c = inp.closest('[data-cur]').dataset.cur;
         d.rates[c] = parseFloat(inp.value)||0;
         scheduleSave();
-        renderTotals();
+        refreshAuto();
       });
     });
     host.querySelectorAll('.refreshRate').forEach(btn => {
@@ -848,7 +1140,7 @@
           d.rates[c] = Math.round(rate*10000)/10000;
           scheduleSave();
           renderRatesPanel();
-          renderTotals();
+          refreshAuto();
         }catch(e){
           alert('Could not fetch a live rate right now — enter it manually.');
           btn.disabled = false;
@@ -890,12 +1182,8 @@
     const original = btnEl.innerHTML;
     btnEl.disabled = true; btnEl.innerHTML = '…';
     try{
-      const a = await geocode(leg.from);
-      const b = await geocode(leg.to);
-      if (leg.costCurrencyAuto !== false){
-        const cur = currencyForCountry(extractCountry(b.label));
-        if (cur && d.currencies.includes(cur)) leg.costCurrency = cur;
-      }
+      const a = await geocode(leg.from, d);
+      const b = await geocode(leg.to, d);
       if (leg.mode === 'drive' || leg.mode === 'train'){
         try{
           const route = await osrmRoute(a, b);
@@ -920,24 +1208,34 @@
     return unit === 'mpg' ? 282.481/eff : eff;
   }
 
+  function fuelByCurrency(d){
+    const f = d.fuel, l100 = litersPer100(f.efficiency, f.efficiencyUnit), out = {};
+    (d.legs||[]).filter(l => l.mode === 'drive').forEach(l => {
+      const cur = l.costCurrency || d.currencies[0];
+      out[cur] = (out[cur]||0) + (parseFloat(l.distanceKm)||0) / 100 * l100 * (f.prices[cur]||0);
+    });
+    return out;
+  }
+  function renderFuelSummary(){
+    const d = state.draft;
+    const host = document.getElementById('fuelSummary');
+    if (!host) return;
+    const driveKm = (d.legs||[]).filter(l => l.mode === 'drive').reduce((s,l) => s + (parseFloat(l.distanceKm)||0), 0);
+    const by = fuelByCurrency(d);
+    const entries = Object.entries(by);
+    host.innerHTML = `
+      <span style="font-size:13px;color:var(--ink-dim)">Driving distance: <b style="color:var(--ink)">${driveKm.toFixed(0)} km</b></span>
+      ${entries.length ? entries.map(([c,v]) => `<span style="font-size:13px;color:var(--ink-dim)">Est. fuel (${c}): <b style="color:var(--ink)">${CURRENCY_SYM[c]||c}${v.toFixed(0)}</b></span>`).join('') : '<span style="font-size:12.5px;color:var(--ink-faint)">Add some drive legs to estimate fuel cost.</span>'}`;
+  }
+
   function renderFuelCalc(){
     const d = state.draft;
     const host = document.getElementById('fuelCalc');
     if (!host) return;
     const f = d.fuel;
     d.currencies.forEach(c => { if (f.prices[c] == null) f.prices[c] = 0; });
-    const driveLegs = (d.legs||[]).filter(l => l.mode === 'drive');
-    const driveKm = driveLegs.reduce((s,l) => s + (parseFloat(l.distanceKm)||0), 0);
-    const l100 = litersPer100(f.efficiency, f.efficiencyUnit);
-    const byCurrency = {};
-    driveLegs.forEach(l => {
-      const cur = l.costCurrency || d.currencies[0];
-      const liters = (parseFloat(l.distanceKm)||0)/100 * l100;
-      byCurrency[cur] = (byCurrency[cur]||0) + liters * (f.prices[cur]||0);
-    });
     host.innerHTML = `
       <div class="budget-row" style="flex-wrap:wrap;gap:14px 20px;justify-content:flex-start;">
-        <span style="font-size:13px;color:var(--ink-dim)">Driving distance: <b style="color:var(--ink)">${driveKm.toFixed(0)} km</b></span>
         <label style="font-size:12.5px;color:var(--ink-dim);display:flex;align-items:center;gap:5px">Efficiency
           <input type="number" min="0" step="0.1" id="fuelEff" value="${f.efficiency}" style="width:64px;background:var(--panel-2);border:1px solid var(--panel-edge);border-radius:6px;padding:4px 6px;">
           <select id="fuelEffUnit" style="background:var(--panel-2);border:1px solid var(--panel-edge);border-radius:6px;padding:4px 6px;font-size:12.5px;">
@@ -953,25 +1251,67 @@
             <span class="amt">${CURRENCY_SYM[c]||c} <input type="number" min="0" step="0.01" class="fuelPriceInput" data-cur="${c}" value="${f.prices[c]}"></span>
           </div>`).join('')}
       </div>
-      <div class="totals-bar" style="margin-top:12px;padding-top:12px;flex-wrap:wrap;">
-        ${Object.keys(byCurrency).length ? Object.entries(byCurrency).map(([c,v]) => `<div class="tstat"><div class="label">Est. fuel (${c})</div><div class="val" style="font-size:22px">${CURRENCY_SYM[c]||c}${v.toFixed(0)}</div></div>`).join('') : '<span style="font-size:12.5px;color:var(--ink-faint)">Add some drive legs to estimate fuel cost.</span>'}
-        <button class="ghost-btn" id="applyFuelBtn" style="margin-left:auto">Apply to drive legs</button>
+      <div class="totals-bar" style="margin-top:12px;padding-top:12px;flex-wrap:wrap;align-items:center;">
+        <div id="fuelSummary" style="display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline"></div>
+        <button class="ghost-btn" id="resetFuelBtn" style="margin-left:auto">Recalculate all drive legs</button>
       </div>
-      <p style="font-size:11.5px;color:var(--ink-faint);margin-top:8px;">Applies per leg using each leg's own currency — UK legs use the UK price, continental legs use the euro price (or whichever you've set).</p>
+      <p class="est-note" style="margin-top:8px;">Each drive leg's cost is filled in automatically from its distance, your efficiency and the pump price in that leg's currency, so UK legs use the UK price and continental legs use the euro price. Type your own number into any leg to override it; “Recalculate all drive legs” hands them all back to the automatic figure.</p>
     `;
-    document.getElementById('fuelEff').addEventListener('input', e => { f.efficiency = parseFloat(e.target.value)||0; scheduleSave(); renderFuelCalc(); });
-    document.getElementById('fuelEffUnit').addEventListener('change', e => { f.efficiencyUnit = e.target.value; scheduleSave(); renderFuelCalc(); });
+    renderFuelSummary();
+    // These update in place (no re-render) so you can keep typing.
+    document.getElementById('fuelEff').addEventListener('input', e => { f.efficiency = parseFloat(e.target.value)||0; scheduleSave(); refreshAuto(); });
+    document.getElementById('fuelEffUnit').addEventListener('change', e => { f.efficiencyUnit = e.target.value; scheduleSave(); refreshAuto(); });
     host.querySelectorAll('.fuelPriceInput').forEach(inp => {
-      inp.addEventListener('input', () => { f.prices[inp.dataset.cur] = parseFloat(inp.value)||0; scheduleSave(); renderFuelCalc(); });
+      inp.addEventListener('input', () => { f.prices[inp.dataset.cur] = parseFloat(inp.value)||0; scheduleSave(); refreshAuto(); });
     });
-    document.getElementById('applyFuelBtn').addEventListener('click', () => {
-      driveLegs.forEach(l => {
-        const cur = l.costCurrency || d.currencies[0];
-        const liters = (parseFloat(l.distanceKm)||0)/100 * l100;
-        l.cost = Math.round(liters * (f.prices[cur]||0));
-      });
+    document.getElementById('resetFuelBtn').addEventListener('click', () => {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      d.legs.forEach(l => { if (l.mode === 'drive') l.costAuto = true; });
       scheduleSave();
-      renderLegs();
+      refreshAuto();
+    });
+  }
+
+  // Re-runs every automatic figure (currencies, fuel, fares, totals, day estimates) and updates what's on
+  // screen in place, so it's safe to call while someone is typing in a field.
+  function refreshAuto(){
+    const d = state.draft;
+    if (!d) return;
+    const plan = computeDayPlan(d);
+    const curChanged = applyAutoCurrencies(d);
+    const costChanged = applyAutoCosts(d, plan);
+    syncLegsDOM(plan);
+    renderTotals();
+    renderFuelSummary();
+    renderDayOverview();
+    if (curChanged || costChanged) scheduleSave();
+  }
+
+  function paintChip(chip, leg, idx, d, plan){
+    const auto = leg.costAuto !== false;
+    const est = autoCostFor(leg, d, plan.legDates[idx]);
+    chip.className = 'auto-chip ' + (auto ? 'on' : 'off');
+    chip.textContent = auto ? 'auto' : 'manual · reset';
+    chip.title = auto
+      ? (est ? est.note : '')
+      : 'You typed this in. Click to go back to the automatic estimate' + (est ? ' (' + Math.round(est.amount) + ').' : '.');
+  }
+  function syncLegsDOM(plan){
+    const d = state.draft;
+    const host = document.getElementById('legList');
+    if (!host) return;
+    plan = plan || computeDayPlan(d);
+    const setIfIdle = (el, v) => { if (el && document.activeElement !== el) el.value = v; };
+    host.querySelectorAll('.leg').forEach(el => {
+      const idx = parseInt(el.dataset.idx);
+      const leg = d.legs[idx];
+      if (!leg) return;
+      setIfIdle(el.querySelector('input[data-f="cost"]'), leg.cost || 0);
+      setIfIdle(el.querySelector('input[data-f="distanceKm"]'), leg.distanceKm || 0);
+      setIfIdle(el.querySelector('input[data-f="hours"]'), leg.hours || 0);
+      setIfIdle(el.querySelector('.costCur'), leg.costCurrency || d.currencies[0]);
+      const chip = el.querySelector('.auto-chip');
+      if (chip) paintChip(chip, leg, idx, d, plan);
     });
   }
 
@@ -1012,12 +1352,16 @@
     const json = await res.json();
     return json.results || [];
   }
-  async function geocode(place){
+  async function geocode(place, dOverride){
     const key = place.trim().toLowerCase();
     if (!key) throw new Error('empty place');
-    if (geoCache[key]) return geoCache[key];
-    const d = state.draft;
+    const d = dOverride || state.draft;
     if (d && d.geoV2 && d.geoV2[key]){ geoCache[key] = d.geoV2[key]; return d.geoV2[key]; }
+    if (geoCache[key]){
+      // known from another trip: keep a copy on this one too, so it syncs to everyone
+      if (d){ d.geoV2 = d.geoV2 || {}; d.geoV2[key] = geoCache[key]; if (d === state.draft) scheduleSave(); }
+      return geoCache[key];
+    }
     let candidates = [];
     for (const variant of geocodeVariants(place)){
       candidates = await geocodeRaw(variant);
@@ -1032,7 +1376,7 @@
     }
     const out = {lat: r.latitude, lon: r.longitude, label: r.name + (r.country ? ', '+r.country : '')};
     geoCache[key] = out;
-    if (d){ d.geoV2 = d.geoV2 || {}; d.geoV2[key] = out; scheduleSave(); }
+    if (d){ d.geoV2 = d.geoV2 || {}; d.geoV2[key] = out; if (d === state.draft) scheduleSave(); }
     return out;
   }
   function daysFromToday(dateStr){
@@ -1073,6 +1417,65 @@
     };
   }
 
+  // Where to check the weather for a day: the overnight city if set, otherwise the stop the day is estimated to end at
+  function placeForDay(d, plan, i){
+    const day = d.days[i];
+    return (day.overnight || '').trim() || (plan.days[i] && plan.days[i].stop) || (d.legs[i] ? d.legs[i].to : '') || '';
+  }
+
+  // Looks up every stop on the route (cached on the trip), fills in real distances for legs that have none,
+  // then refreshes currencies, costs, day estimates and the map. Safe to call repeatedly.
+  function resolveTripPlaces(){
+    const d = state.draft;
+    if (!d) return Promise.resolve();
+    if (state._resolving && state._resolving.d === d){ state._resolveAgain = true; return state._resolving.p; }
+    const rec = { d, p: null };
+    state._resolving = rec;
+    rec.p = (async () => {
+      try{
+        do{
+          state._resolveAgain = false;
+          for (const name of new Set(computeStops(d))){
+            if (state.draft !== d) return;
+            const key = name.toLowerCase();
+            if (geoFor(d, name) && !(d.geoV2 && d.geoV2[key])){ await geocode(name, d); continue; }
+            if (geoFor(d, name)) continue;
+            if (state._geoFailed && state._geoFailed.has(key)) continue;
+            try{ await geocode(name, d); }
+            catch(e){ (state._geoFailed = state._geoFailed || new Set()).add(key); }
+          }
+          // legs with no distance yet: fill it in (real road distance for drives, straight-line otherwise)
+          let filled = false;
+          for (const leg of d.legs){
+            if (state.draft !== d) return;
+            if ((parseFloat(leg.distanceKm)||0) > 0 || !(leg.from||'').trim() || !(leg.to||'').trim()) continue;
+            const a = geoFor(d, leg.from), b = geoFor(d, leg.to);
+            if (!a || !b) continue;
+            if (leg.mode === 'drive' || leg.mode === 'train'){
+              try{
+                const r = await osrmRoute(a, b);
+                leg.distanceKm = Math.round(r.distanceKm);
+                if (!(parseFloat(leg.hours)>0)) leg.hours = Math.round(r.hours*10)/10;
+              }catch(e){ leg.distanceKm = Math.round(haversineKm(a, b)); }
+            } else {
+              leg.distanceKm = Math.round(haversineKm(a, b));
+            }
+            filled = true;
+          }
+          if (filled) scheduleSave();
+        } while (state._resolveAgain);
+      } finally {
+        if (state._resolving === rec) state._resolving = null;
+      }
+      if (state.draft === d){
+        refreshAuto();
+        renderWeather();
+        drawMapFromCache();
+      }
+    })();
+    return rec.p;
+  }
+
   function renderWeather(){
     const d = state.draft;
     const host = document.getElementById('weatherList');
@@ -1081,8 +1484,9 @@
       host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint)">Generate the day-by-day plan first, then check the weather for each stop.</p>';
       return;
     }
+    const plan = computeDayPlan(d);
     host.innerHTML = `<div class="budget-grid">` + d.days.map((day,i) => {
-      const place = day.overnight || (d.legs[i] ? d.legs[i].to : '') || '';
+      const place = placeForDay(d, plan, i);
       const w = day.weather;
       return `<div class="budget-row" data-day="${i}" style="flex-direction:column;align-items:stretch;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -1100,7 +1504,7 @@
       btn.addEventListener('click', async () => {
         const i = parseInt(btn.dataset.day);
         const day = d.days[i];
-        const place = day.overnight || (d.legs[i] ? d.legs[i].to : '');
+        const place = placeForDay(d, computeDayPlan(d), i);
         if (!place) return;
         const resultEl = btn.closest('[data-day]').querySelector('.weatherResult');
         resultEl.textContent = 'Checking…';
@@ -1117,7 +1521,7 @@
   }
 
   // ---------- map ----------
-  let leafletMap = null, markerLayer = null, lineLayer = null, legendEl = null;
+  let leafletMap = null, markerLayer = null, lineLayer = null, legendEl = null, lastFitSig = '', leafletLoading = null;
 
   function computeStops(d){
     if (!d.legs || !d.legs.length) return [];
@@ -1125,10 +1529,36 @@
     return stops.map(s => (s||'').trim()).filter(Boolean);
   }
 
+  // If the page's own Leaflet copy didn't load (blocked or offline at the time), try a second CDN once.
+  function withLeaflet(cb, statusEl){
+    if (window.L && window.L.map) return cb();
+    if (!leafletLoading){
+      leafletLoading = (async () => {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet'; css.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(css);
+        await loadScript('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js');
+      })();
+    }
+    leafletLoading.then(() => { if (window.L) cb(); }).catch(() => {
+      leafletLoading = null;
+      if (statusEl) statusEl.textContent = "The map library didn't load (network, or an ad-blocker?). Reload the page to try again.";
+    });
+  }
+
   function ensureMap(){
+    const host = document.getElementById('mapHost');
+    // The trip panel is rebuilt whenever a trip is opened or a synced edit lands, which replaces #mapHost with
+    // a fresh element. A map object made earlier is still attached to the discarded one and would draw into
+    // nothing (a blank grey box), so drop it and build a new one on the current element.
+    if (leafletMap && leafletMap.getContainer() !== host){
+      try{ leafletMap.remove(); }catch(e){}
+      leafletMap = markerLayer = lineLayer = legendEl = null;
+      lastFitSig = '';
+    }
     if (leafletMap) return leafletMap;
-    leafletMap = L.map('mapHost', { scrollWheelZoom: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    leafletMap = L.map(host, { scrollWheelZoom: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
     }).addTo(leafletMap);
@@ -1138,19 +1568,35 @@
   }
 
   function drawMapFromCache(){
-    const d = state.draft;
     const host = document.getElementById('mapHost');
     const statusEl = document.getElementById('mapStatus');
-    if (!host || !statusEl) return;
-    const stops = computeStops(d);
-    if (!stops.length){
+    const d = state.draft;
+    if (!host || !statusEl || !d) return;
+    if (!computeStops(d).length){
       host.classList.add('empty');
       statusEl.textContent = 'Add some legs above to see them here.';
       return;
     }
+    withLeaflet(() => {
+      try{ drawMapNow(); }
+      catch(e){
+        console.error('Map draw failed', e);
+        const el = document.getElementById('mapStatus');
+        if (el) el.textContent = 'The map hit an error (' + e.message + '). Try "Update map".';
+      }
+    }, statusEl);
+  }
+
+  function drawMapNow(){
+    const d = state.draft;
+    const host = document.getElementById('mapHost');
+    const statusEl = document.getElementById('mapStatus');
+    if (!d || !host || !statusEl) return;
+    const stops = computeStops(d);
+    if (!stops.length) return;
     host.classList.remove('empty');
     const map = ensureMap();
-    setTimeout(() => map.invalidateSize(), 0);
+    setTimeout(() => { try{ map.invalidateSize(); }catch(e){} }, 0);
     markerLayer.clearLayers();
     if (lineLayer){ map.removeLayer(lineLayer); lineLayer = null; }
     const geo = d.geoV2 || {};
@@ -1243,10 +1689,15 @@
       ? `<div><span class="sw" style="border-color:${outColor}"></span>Outbound</div><div><span class="sw" style="border-color:${backColor}"></span>Return</div>`
       : `<div><span class="sw" style="border-color:${outColor}"></span>Route (arrows show direction)</div>`;
 
-    if (pts.length > 1){
-      map.fitBounds(L.latLngBounds(pts).pad(0.25));
-    } else if (pts.length === 1){
-      map.setView(pts[0], 7);
+    // Only re-frame the map when the set of stops actually changed, so redraws don't undo your panning/zoom.
+    const sig = pts.map(p => p.join(',')).join('|');
+    if (sig !== lastFitSig){
+      lastFitSig = sig;
+      if (pts.length > 1){
+        map.fitBounds(L.latLngBounds(pts).pad(0.25));
+      } else if (pts.length === 1){
+        map.setView(pts[0], 7);
+      }
     }
     statusEl.textContent = missing.length
       ? `Couldn't place yet: ${missing.join(', ')} — click "Update map" to look them up.`
@@ -1254,26 +1705,10 @@
   }
 
   async function updateMap(){
-    const d = state.draft;
-    const stops = computeStops(d);
     const statusEl = document.getElementById('mapStatus');
     if (statusEl) statusEl.textContent = 'Looking up locations…';
-    for (const s of stops){
-      try{ await geocode(s); } catch(e){ /* leave as missing, shown after draw */ }
-    }
-    let currencyChanged = false;
-    for (const leg of (d.legs||[])){
-      if (leg.costCurrencyAuto === false || !leg.to || !leg.to.trim()) continue;
-      const key = leg.to.trim().toLowerCase();
-      const g = d.geoV2 && d.geoV2[key];
-      if (!g) continue;
-      const cur = currencyForCountry(extractCountry(g.label));
-      if (cur && d.currencies.includes(cur) && leg.costCurrency !== cur){
-        leg.costCurrency = cur;
-        currencyChanged = true;
-      }
-    }
-    if (currencyChanged){ scheduleSave(); renderLegs(); }
+    state._geoFailed = new Set();
+    await resolveTripPlaces();
     drawMapFromCache();
   }
 
@@ -1297,6 +1732,9 @@
   function renderLegs(){
     const d = state.draft;
     const host = document.getElementById('legList');
+    const plan = computeDayPlan(d);
+    applyAutoCurrencies(d);
+    applyAutoCosts(d, plan);
     host.innerHTML = d.legs.map((leg, idx) => `
       <div class="leg" data-mode="${leg.mode}" data-idx="${idx}">
         <div class="leg-row1">
@@ -1319,6 +1757,7 @@
           <span class="field">Cost
             <select class="costCur" data-idx="${idx}">${d.currencies.map(c => `<option value="${c}" ${c===(leg.costCurrency||d.currencies[0])?'selected':''}>${c}</option>`).join('')}</select>
             <input type="number" min="0" data-f="cost" value="${leg.cost||0}">
+            ${AUTO_MODES.includes(leg.mode) ? '<button type="button" class="auto-chip"></button>' : ''}
           </span>
           <input class="notes" data-f="notes" value="${esc(leg.notes)}" placeholder="notes…">
           ${(leg.mode==='ferry'||leg.mode==='tunnel') ? `<a class="field" style="color:var(--crossing)" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent((leg.mode==='tunnel'?'Eurotunnel':'ferry')+' '+leg.from+' to '+leg.to+' prices'+(d.startDate?' '+d.startDate:''))}">Check current prices</a>` : ''}
@@ -1338,29 +1777,106 @@
           leg[field] = v;
           scheduleSave();
           if (field === 'mode'){
+            leg.costAuto = AUTO_MODES.includes(v);
             el.dataset.mode = v;
             el.querySelector('.mode-select').innerHTML = ICONS[v]+el.querySelector('.mode-select select').outerHTML;
             renderLegs();
           }
-          if (field === 'cost') renderTotals();
+          if (field === 'cost'){
+            if (AUTO_MODES.includes(leg.mode)){
+              leg.costAuto = false;
+              const chip = el.querySelector('.auto-chip');
+              if (chip) paintChip(chip, leg, idx, d, computeDayPlan(d));
+            }
+            renderTotals();
+          }
+          if (['distanceKm','hours','from','to'].includes(field)) refreshAuto();
         });
       });
+      const chip = el.querySelector('.auto-chip');
+      if (chip){
+        paintChip(chip, leg, idx, d, plan);
+        chip.addEventListener('click', () => {
+          if (leg.costAuto !== false) return;
+          const ci = el.querySelector('input[data-f="cost"]');
+          if (ci && document.activeElement === ci) ci.blur();   // let the field take the new figure
+          leg.costAuto = true;
+          scheduleSave();
+          refreshAuto();
+        });
+      }
       el.querySelector('.calcLeg').addEventListener('click', () => calcLegDistanceTime(leg, el.querySelector('.calcLeg')));
       el.querySelector('.costCur').addEventListener('change', (e) => {
         leg.costCurrency = e.target.value;
         leg.costCurrencyAuto = false;
         scheduleSave();
-        renderTotals();
+        refreshAuto();
       });
-      el.querySelector('.removeleg').addEventListener('click', () => { d.legs.splice(idx,1); scheduleSave(); renderLegs(); renderTotals(); drawMapFromCache(); });
+      el.querySelector('.removeleg').addEventListener('click', () => { d.legs.splice(idx,1); scheduleSave(); renderLegs(); });
       el.querySelector('.moveup').addEventListener('click', () => { if(idx>0){ [d.legs[idx-1],d.legs[idx]]=[d.legs[idx],d.legs[idx-1]]; scheduleSave(); renderLegs(); }});
       el.querySelector('.movedown').addEventListener('click', () => { if(idx<d.legs.length-1){ [d.legs[idx+1],d.legs[idx]]=[d.legs[idx],d.legs[idx+1]]; scheduleSave(); renderLegs(); }});
       el.querySelectorAll('input.city').forEach(inp => {
-        inp.addEventListener('change', () => drawMapFromCache());
+        inp.addEventListener('change', () => { drawMapFromCache(); resolveTripPlaces(); });
       });
     });
     renderTotals();
+    renderDayOverview();
     drawMapFromCache();
+  }
+
+  function renderDayOverview(){
+    const d = state.draft;
+    const host = document.getElementById('dayOverview');
+    if (!host || !d) return;
+    if (!d.days || !d.days.length){ host.innerHTML = ''; return; }
+    const plan = computeDayPlan(d);
+    const active = parseInt(tripPanelEl.dataset.activeDay || '0');
+    const resolving = !!state._resolving;
+    let notes = '';
+    if (plan.leftover > 0.25 && d.legs.length){
+      notes += `<p class="est-note" style="color:var(--danger)">The route needs about ${plan.leftover.toFixed(1)} more hours of travel than these dates allow. Extend the dates, or check the overnight stops you've set.</p>`;
+    }
+    if (plan.missingGeo){
+      notes += `<p class="est-note">${resolving ? 'Looking up places…' : `${plan.missingGeo} place${plan.missingGeo===1?'':'s'} couldn't be located yet, so countries may be missing. Check the spelling, or click "Update map" to retry.`}</p>`;
+    }
+    host.innerHTML = `<p class="est-note">A rough guide to where you'll be each day, worked out from the legs' travel times and your dates. Fill in “Overnight in” on a day to pin it down and the other days will adjust around it. Countries you only pass through on a long leg may not show.</p>` + notes +
+      d.days.map((day, i) => {
+        const p = plan.days[i] || { countries: [], hours: 0, near: '' };
+        const cs = p.countries.length
+          ? p.countries.map(c => `<span>${esc(c)}</span>`).join('<span class="arr">→</span>')
+          : '<span class="dim">not worked out yet</span>';
+        const hrs = Math.round(p.hours * 2) / 2;
+        const line2 = (day.overnight ? `Overnight in ${esc(day.overnight)}` : esc(p.near || '')) + (hrs > 0 ? `${(day.overnight || p.near) ? ' · ' : ''}about ${hrs} h on the move` : ((day.overnight || p.near) ? ' · rest day' : ''));
+        return `<button type="button" class="day-row ${i===active?'active':''}" data-i="${i}">
+          <span class="when">Day ${i+1} · ${fmtDate(day.date)}</span>
+          <span class="where">${cs}</span>
+          <span class="near">${line2}</span>
+        </button>`;
+      }).join('');
+    host.querySelectorAll('.day-row').forEach(btn => {
+      btn.addEventListener('click', () => { tripPanelEl.dataset.activeDay = btn.dataset.i; renderDays(); });
+    });
+    paintDayEstimate(plan);
+  }
+
+  function paintDayEstimate(plan){
+    const d = state.draft;
+    const el = document.getElementById('dayEst');
+    if (!el) return;
+    const i = parseInt(tripPanelEl.dataset.activeDay || '0');
+    const p = plan.days[i], day = d.days[i];
+    if (!p || !day){ el.innerHTML = ''; return; }
+    const cs = p.countries.length ? p.countries.map(esc).join(' → ') : 'not worked out yet';
+    el.innerHTML = `Likely in: <b>${cs}</b>${p.near ? ' · ' + esc(p.near) : ''}` +
+      ((!day.overnight && p.suggest) ? `<button type="button" class="linklike" id="useSuggest">Use ${esc(shortName(p.suggest))} as overnight</button>` : '');
+    const btn = document.getElementById('useSuggest');
+    if (btn) btn.addEventListener('click', () => {
+      day.overnight = p.suggest;
+      scheduleSave();
+      renderDays();
+      renderWeather();
+      refreshAuto();
+    });
   }
 
   function renderDays(){
@@ -1370,10 +1886,12 @@
     if (!d.days || !d.days.length){
       tabsHost.innerHTML = '';
       panelHost.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint)">Set your dates and generate the day-by-day plan.</p>';
+      renderDayOverview();
       return;
     }
     let active = parseInt(tripPanelEl.dataset.activeDay || '0');
     if (active >= d.days.length) active = 0;
+    tripPanelEl.dataset.activeDay = String(active);
     tabsHost.innerHTML = d.days.map((day, i) =>
       `<button class="day-tab ${i===active?'active':''}" data-i="${i}">Day ${i+1}<br><span style="opacity:.7">${fmtDate(day.date)}</span></button>`).join('');
     tabsHost.querySelectorAll('.day-tab').forEach(btn => {
@@ -1382,18 +1900,20 @@
     const day = d.days[active];
     panelHost.innerHTML = `<div class="day-panel">
       <div class="day-date">${fmtDate(day.date)}</div>
+      <div class="day-est" id="dayEst"></div>
       <label>Overnight in</label>
       <input class="overnight" id="dayOvernight" value="${esc(day.overnight)}" placeholder="e.g. Brussels">
       <label>Plan / notes</label>
       <textarea class="plan" id="dayPlan" placeholder="What's happening this day…">${esc(day.notes)}</textarea>
     </div>`;
-    document.getElementById('dayOvernight').addEventListener('input', e => { day.overnight = e.target.value; scheduleSave(); renderWeather(); });
+    document.getElementById('dayOvernight').addEventListener('input', e => { day.overnight = e.target.value; scheduleSave(); refreshAuto(); renderWeather(); });
     document.getElementById('dayPlan').addEventListener('input', e => { day.notes = e.target.value; scheduleSave(); });
+    renderDayOverview();
   }
 
   function renderBudget(){
     const d = state.draft;
-    const cats = [['fuel','Fuel'],['ferry','Ferry / Tunnel'],['tolls','Tolls'],['accommodation','Accommodation'],['food','Food & drink'],['activities','Activities'],['misc','Misc']];
+    const cats = [['fuel','Fuel (extra)'],['ferry','Ferry / Tunnel (extra)'],['tolls','Tolls'],['accommodation','Accommodation'],['food','Food & drink'],['activities','Activities'],['misc','Misc']];
     const grid = document.getElementById('budgetGrid');
     grid.innerHTML = cats.map(([key,label]) => `
       <div class="budget-row">
@@ -1418,10 +1938,12 @@
     const sym = CURRENCY_SYM[home] || home;
     const bySpend = {};
     let missingRate = false;
-    let legTotalHome = 0;
+    let legTotalHome = 0, legFuelHome = 0, legCrossHome = 0;
     (d.legs||[]).forEach(l => {
       const cur = l.costCurrency || home;
       const amt = parseFloat(l.cost)||0;
+      if (l.mode === 'drive') legFuelHome += convertToHome(amt, cur, d);
+      else if (l.mode === 'ferry' || l.mode === 'tunnel') legCrossHome += convertToHome(amt, cur, d);
       bySpend[cur] = (bySpend[cur]||0) + amt;
       if (cur !== home && (d.rates[cur]==null || d.rates[cur]<=0) && amt>0) missingRate = true;
       legTotalHome += convertToHome(amt, cur, d);
@@ -1438,11 +1960,11 @@
     const perPerson = grand / Math.max(1, d.travelers||1);
     const bar = document.getElementById('totalsBar');
     if (!bar) return;
-    let breakdown = '';
+    let breakdown = `<div style="width:100%;font-size:11.5px;color:var(--ink-faint);margin-top:6px;">Route costs: fuel ${sym}${legFuelHome.toFixed(0)} · ferry &amp; tunnel ${sym}${legCrossHome.toFixed(0)} · other legs ${sym}${Math.max(0, legTotalHome - legFuelHome - legCrossHome).toFixed(0)}</div>`;
     if (d.currencies.length > 1){
       const parts = Object.entries(bySpend).filter(([,v]) => v > 0).map(([c,v]) => `${CURRENCY_SYM[c]||c}${v.toFixed(0)}`);
       if (parts.length){
-        breakdown = `<div style="width:100%;font-size:11.5px;color:var(--ink-faint);margin-top:6px;">Raw spend: ${parts.join(' + ')}${missingRate ? ' — set an exchange rate above for an accurate total' : ''}</div>`;
+        breakdown += `<div style="width:100%;font-size:11.5px;color:var(--ink-faint);margin-top:4px;">Raw spend: ${parts.join(' + ')}${missingRate ? ' — set an exchange rate above for an accurate total' : ''}</div>`;
       }
     }
     bar.innerHTML = `
