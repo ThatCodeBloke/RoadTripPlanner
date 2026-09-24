@@ -262,6 +262,42 @@
   .day-est { font-size: 13px; color: var(--ink-dim); margin-bottom: 12px; line-height: 1.6; }
   .day-est b { color: var(--ink); font-weight: 500; }
   .linklike { background: none; border: none; padding: 0; margin-left: 6px; font-size: 12px; color: var(--route); text-decoration: underline; }
+  .it-settings { display:flex; flex-wrap:wrap; gap: 10px 22px; align-items:center; margin-bottom: 14px; font-size: 12.5px; color: var(--ink-dim); }
+  .it-settings label { display:flex; align-items:center; gap:6px; }
+  .it-settings input { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
+  .it-settings input[type=number] { width: 54px; }
+  .it-day { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .it-head { display:flex; flex-wrap:wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }
+  .it-head .it-dayname { font-family: var(--font-display); font-size: 17px; }
+  .it-head .it-where { font-size: 13px; color: var(--ink-dim); }
+  .it-head .it-start { margin-left: auto; font-size: 12px; color: var(--ink-dim); display:flex; align-items:center; gap:6px; }
+  .it-head input[type=time], .it-add input, .field input[type=time] { background: var(--panel-2); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 3px 6px; font-size: 12.5px; }
+  .it-list { list-style: none; margin: 0; padding: 0; }
+  .it-item { display:grid; grid-template-columns: 74px 1fr auto; gap: 2px 12px; padding: 7px 0; border-top: 1px dashed var(--panel-edge); }
+  .it-item:first-child { border-top: none; }
+  .it-time { font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
+  .it-title { font-size: 14px; }
+  .it-sub { font-size: 12px; color: var(--ink-dim); margin-top: 1px; line-height: 1.45; }
+  .it-item.sail .it-time, .it-item.checkin .it-time { color: var(--crossing); }
+  .it-item.end .it-time, .it-item.end .it-title { color: var(--accent); }
+  .it-item.custom .it-title { font-style: italic; }
+  .it-item.rest .it-title { color: var(--ink-dim); }
+  .it-warn { margin: 8px 0 0; font-size: 12px; color: var(--danger); line-height: 1.45; }
+  .it-add { display:flex; flex-wrap:wrap; gap: 8px; margin-top: 10px; align-items:center; }
+  .it-add input.newTitle { flex: 1; min-width: 160px; }
+  .it-add button { background: none; border: 1px dashed var(--panel-edge); border-radius: 8px; padding: 4px 12px; font-size: 12.5px; color: var(--ink-dim); }
+  .it-add button:hover { border-color: var(--route); color: var(--ink); }
+  .print-only { display: none; }
+  @media print {
+    body.print-itin { --ink:#20242C; --ink-dim:rgba(32,36,44,.7); --ink-faint:rgba(32,36,44,.5); --bg:#fff; --panel:#fff; --panel-2:#f4f1ea; --panel-edge:rgba(32,36,44,.25); --accent:#9a5a14; --crossing:#3f4a86; --danger:#a03a2e; background:#fff; color:#20242C; }
+    body.print-itin .topbar, body.print-itin #sidebar, body.print-itin footer.foot, body.print-itin .trip-head,
+    body.print-itin section.block:not(#itinerarySection), body.print-itin .no-print, body.print-itin .it-add, body.print-itin .it-settings, body.print-itin .it-rm { display: none !important; }
+    body.print-itin .layout { display: block; max-width: none; }
+    body.print-itin #main { padding: 0; }
+    body.print-itin .print-only { display: block; }
+    body.print-itin .it-day { break-inside: avoid; border-color: #bbb; }
+    body.print-itin .it-head input[type=time] { border: none; background: none; padding: 0; appearance: none; -webkit-appearance: none; }
+  }
   .budget-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 16px; }
   @media (max-width: 520px) { .budget-grid { grid-template-columns: 1fr; } }
   .budget-row { display:flex; align-items:center; justify-content: space-between; gap: 10px;
@@ -382,9 +418,9 @@
     { a:'portsmouth', b:'stmalo', gbp:195, label:'Portsmouth–St Malo ferry' },
     { a:'poole', b:'cherbourg', gbp:120, label:'Poole–Cherbourg ferry' },
     { a:'plymouth', b:'roscoff', gbp:130, label:'Plymouth–Roscoff ferry' },
-    { a:'portsmouth', b:'santander', gbp:290, label:'Portsmouth–Santander ferry (cabin extra)' },
-    { a:'portsmouth', b:'bilbao', gbp:290, label:'Portsmouth–Bilbao ferry (cabin extra)' },
-    { a:'plymouth', b:'santander', gbp:290, label:'Plymouth–Santander ferry (cabin extra)' }
+    { a:'portsmouth', b:'santander', gbp:290, label:'Portsmouth–Santander ferry (cabin extra)', via:[[48.6,-5.6]] },
+    { a:'portsmouth', b:'bilbao', gbp:290, label:'Portsmouth–Bilbao ferry (cabin extra)', via:[[48.6,-5.6]] },
+    { a:'plymouth', b:'santander', gbp:290, label:'Plymouth–Santander ferry (cabin extra)', via:[[48.6,-5.6]] }
   ];
   const TUNNEL_GBP = 125; // LeShuttle "Standard" one-way, per car, up to 9 people
 
@@ -604,7 +640,172 @@
       if (di < 0 && N) di = N - 1;
       plan.legDates.push(di >= 0 ? days[di].date : (d.startDate || ''));
     });
+    plan.E = E; plan.H = H;
     return plan;
+  }
+
+  // ---------- timings & itinerary ----------
+  const DEFAULT_TIMING = { start: '08:00', breakEveryH: 2, breakMin: 20, ferryCheckinMin: 60, tunnelCheckinMin: 45 };
+  // Winter UTC offsets, only used to work out how the clock changes when you cross between zones
+  const TZ_OFFSET = { 'united kingdom':0, ireland:0, portugal:0, iceland:0, finland:2, greece:2, estonia:2, latvia:2,
+    lithuania:2, romania:2, bulgaria:2, cyprus:2, ukraine:2, turkey:3 };
+  function tzOffset(countryRaw){
+    const k = (countryRaw||'').trim().toLowerCase();
+    if (!k) return null;
+    return (k in TZ_OFFSET) ? TZ_OFFSET[k] : 1;
+  }
+  function parseHM(v){
+    const m = /^(\d{1,2}):(\d{2})$/.exec(v || '');
+    return m ? parseInt(m[1],10) * 60 + parseInt(m[2],10) : null;
+  }
+  function fmtHM(min){
+    let next = false;
+    min = Math.round(min);
+    if (min >= 1440){ min -= 1440; next = true; }
+    if (min < 0) min += 1440;
+    const t = String(Math.floor(min/60)).padStart(2,'0') + ':' + String(min%60).padStart(2,'0');
+    return next ? t + ' +1d' : t;
+  }
+  function fmtDur(min){
+    min = Math.round(min);
+    const h = Math.floor(min/60), m = min % 60;
+    if (!h) return m + ' min';
+    return m ? `${h} h ${m} min` : `${h} h`;
+  }
+
+  // Turns each day's slice of the route into a timed list: leave, drive (with breaks), ferry check-in, sailing,
+  // arrive, plus anything the person added by hand. Sailing times are the person's own if entered, otherwise
+  // the earliest one after check-in, so treat those as estimates.
+  function computeItinerary(d, plan){
+    plan = plan || computeDayPlan(d);
+    const T = Object.assign({}, DEFAULT_TIMING, d.timing || {});
+    const legs = d.legs || [], days = d.days || [];
+    const countryRawOf = name => { const g = geoFor(d, name); return g ? countryFromLabel(g.label) : ''; };
+    const out = [];
+    days.forEach((day, i) => {
+      const ws = i === 0 ? 0 : plan.E[i-1], we = plan.E[i];
+      let clock = parseHM(day.start);
+      if (clock == null) clock = parseHM(T.start);
+      if (clock == null) clock = 480;
+      const startMin = clock;
+      const items = [], warns = [];
+      let driven = 0, driveH = 0, driveKm = 0;
+
+      legs.forEach((leg, j) => {
+        const a = Math.max(plan.H[j], ws), b = Math.min(plan.H[j+1], we);
+        if (b - a <= 1e-6) return;
+        const span = plan.H[j+1] - plan.H[j] || 1;
+        const hrs = b - a, frac = hrs / span;
+        const startsMid = a > plan.H[j] + 1e-6, endsMid = b < plan.H[j+1] - 1e-6;
+        const from = shortName(leg.from) || 'start', to = shortName(leg.to) || 'destination';
+        const km = Math.round((parseFloat(leg.distanceKm)||0) * frac);
+        const tzShift = (() => {
+          const o1 = tzOffset(countryRawOf(leg.from)), o2 = tzOffset(countryRawOf(leg.to));
+          return (o1 == null || o2 == null) ? 0 : o2 - o1;
+        })();
+
+        if (leg.mode === 'ferry' || leg.mode === 'tunnel'){
+          const isT = leg.mode === 'tunnel';
+          const checkin = parseFloat(isT ? T.tunnelCheckinMin : T.ferryCheckinMin) || 0;
+          const earliest = clock + checkin;
+          let dep = earliest;
+          const fixed = parseHM(leg.departTime);
+          if (fixed != null){
+            dep = fixed;
+            if (fixed < earliest) warns.push(`You'd reach ${from} at ${fmtHM(clock)}, only ${Math.max(0, fixed - clock)} min before the ${fmtHM(fixed)} ${isT ? 'train' : 'sailing'}. Check-in needs about ${checkin} min.`);
+          }
+          const ciAt = Math.max(clock, dep - checkin);
+          items.push({ t: ciAt, kind: 'checkin', title: `Check in at ${from}`,
+            sub: (dep - ciAt > checkin + 10 ? `${fmtDur(dep - ciAt - checkin)} spare before check-in. ` : '') + `Be there ${checkin} min before departure` });
+          const dur = hrs * 60;
+          const arr = dep + dur + tzShift * 60;
+          const price = (parseFloat(leg.cost) || 0) > 0 ? ` · about ${CURRENCY_SYM[leg.costCurrency] || (leg.costCurrency + ' ')}${Math.round(leg.cost)}` : '';
+          items.push({ t: dep, kind: 'sail', title: `${isT ? 'Eurotunnel' : 'Ferry'} ${from} → ${to}`,
+            sub: `${fixed != null ? 'Departs' : 'Earliest departure'} ${fmtHM(dep)} · ${fmtDur(dur)} crossing${price} · arrive ${fmtHM(arr)} local time` +
+              (tzShift ? ` (clocks ${tzShift > 0 ? 'forward' : 'back'} ${Math.abs(tzShift)} h)` : '') });
+          clock = arr; driven = 0;
+        } else {
+          const isRoad = leg.mode === 'drive';
+          const every = parseFloat(T.breakEveryH) || 0;
+          let breaks = 0;
+          if (isRoad && every > 0 && (parseFloat(T.breakMin) || 0) > 0){
+            breaks = Math.max(0, Math.floor((driven + hrs - 1e-6) / every));
+            driven = driven + hrs - breaks * every;
+          }
+          const brk = breaks * (parseFloat(T.breakMin) || 0);
+          const dur = hrs * 60 + brk;
+          const modeLabel = { drive:'Drive', train:'Train', flight:'Flight' }[leg.mode] || 'Travel';
+          const arr = clock + dur + (endsMid ? 0 : tzShift * 60);
+          items.push({ t: clock, kind: leg.mode, title: startsMid ? `Continue to ${to}` : `${modeLabel} ${from} → ${to}`,
+            sub: `${km ? km + ' km · ' : ''}${fmtDur(hrs * 60)}${breaks ? ` + ${breaks} × ${T.breakMin} min break${breaks > 1 ? 's' : ''}` : ''} · ${endsMid ? 'stop for the night around' : 'arrive'} ${fmtHM(arr)}` +
+              (endsMid ? '' : (tzShift ? ` local time (clocks ${tzShift > 0 ? 'forward' : 'back'} ${Math.abs(tzShift)} h)` : '')) });
+          clock = arr;
+          if (isRoad){ driveH += hrs; driveKm += km; }
+        }
+      });
+
+      const p = plan.days[i] || {};
+      if (items.length){
+        const where = (day.overnight || '').trim() || (p.near ? p.near.replace(/^Ends (at|near|between) /, '') : '');
+        items.push({ t: clock, kind: 'end', title: where ? `Overnight: ${where}` : 'End of day', sub: `Arrive around ${fmtHM(clock)}` });
+        if (clock > 22 * 60) warns.push(`This day finishes around ${fmtHM(clock)}. Consider an earlier start or moving some driving to another day.`);
+      } else if (legs.length) {
+        const where = (day.overnight || '').trim() || (p.near ? p.near.replace(/^Ends (at|near|between) /, '') : '');
+        items.push({ t: startMin, kind: 'rest', title: `Rest day${where ? ' in ' + where : ''}`, sub: 'No travel planned' });
+      }
+      (day.items || []).forEach(it => {
+        const t = parseHM(it.time);
+        items.push({ t: t == null ? startMin : t, kind: 'custom', id: it.id, title: it.title || '(untitled)', sub: '' });
+      });
+      // stable sort by time keeps travel steps in order when times tie
+      items.forEach((it, k) => { it._k = k; });
+      items.sort((x, y) => (x.t - y.t) || (x._k - y._k));
+      out.push({ items, warns, startMin, endMin: clock, driveH, driveKm });
+    });
+    return out;
+  }
+
+  function itineraryText(d){
+    const plan = computeDayPlan(d), itin = computeItinerary(d, plan);
+    const lines = [d.name || 'Trip'];
+    if (d.startDate && d.endDate) lines.push(`${fmtDate(d.startDate)} – ${fmtDate(d.endDate)}`);
+    lines.push('');
+    (d.days||[]).forEach((day, i) => {
+      const p = plan.days[i] || { countries: [] };
+      lines.push(`Day ${i+1} · ${fmtDate(day.date)}${p.countries.length ? ' — ' + p.countries.join(' → ') : ''}`);
+      itin[i].items.forEach(it => {
+        lines.push(`${fmtHM(it.t).padEnd(8)}${it.title}`);
+        if (it.sub) lines.push(`${''.padEnd(8)}${it.sub}`);
+      });
+      itin[i].warns.forEach(w => lines.push(`${''.padEnd(8)}! ${w}`));
+      if (day.notes) lines.push(`${''.padEnd(8)}Notes: ${day.notes.replace(/\s*\n\s*/g, ' ')}`);
+      lines.push('');
+    });
+    return lines.join('\n').trim() + '\n';
+  }
+
+  // ---------- routes drawn on the map ----------
+  // Google-style encoded polyline (precision 5), as returned by OSRM. Stored encoded on the trip to keep it small.
+  function decodePolyline(str){
+    const out = []; let i = 0, lat = 0, lng = 0;
+    while (i < str.length){
+      let b, shift = 0, res = 0;
+      do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      lat += (res & 1) ? ~(res >> 1) : (res >> 1);
+      shift = 0; res = 0;
+      do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      lng += (res & 1) ? ~(res >> 1) : (res >> 1);
+      out.push([lat / 1e5, lng / 1e5]);
+    }
+    return out;
+  }
+  function routeKey(leg){ return (leg.from||'').trim().toLowerCase() + '>' + (leg.to||'').trim().toLowerCase(); }
+  async function osrmGeometry(a, b){
+    const url = `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=polyline`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!json.routes || !json.routes.length || !json.routes[0].geometry) throw new Error('no route');
+    return json.routes[0].geometry;
   }
 
   function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
@@ -657,7 +858,7 @@
       budget:{ fuel:0, ferry:0, tolls:0, accommodation:0, food:0, activities:0, misc:0 },
       budgetCurrency: { fuel:"GBP", ferry:"GBP", tolls:"GBP", accommodation:"GBP", food:"GBP", activities:"GBP", misc:"GBP" },
       fuel: { efficiency: 45, efficiencyUnit: "mpg", prices: { GBP: 1.55 } },
-      packingList: [], geoV2: {}, updatedAt: Date.now() };
+      packingList: [], geoV2: {}, routeGeo: {}, timing: Object.assign({}, DEFAULT_TIMING), updatedAt: Date.now() };
   }
 
   // ---------- storage layer ----------
@@ -793,6 +994,9 @@
     if (!t.legs) t.legs = [];
     if (!t.countries) t.countries = [];
     if (!t.preferences) t.preferences = [];
+    t.timing = Object.assign({}, DEFAULT_TIMING, t.timing || {});
+    if (!t.routeGeo) t.routeGeo = {};
+    t.days.forEach(day => { if (!day.items) day.items = []; });
     // Older trips have no auto flag: a leg is automatic if it's empty or already matches the estimate,
     // otherwise the number was typed by hand and is left alone.
     const plan = computeDayPlan(t);
@@ -879,9 +1083,23 @@
     });
   }
 
+  // Write out any edit still waiting on the 500 ms debounce (e.g. before switching trips)
+  function flushSave(){
+    if (!state.saveTimer) return;
+    clearTimeout(state.saveTimer);
+    state.saveTimer = null;
+    if (state.draft && state.selectedId){
+      state.draft.updatedAt = Date.now();
+      Store.saveTrip(state.selectedId, state.draft);
+    }
+  }
+
   function selectTrip(id){
+    const reopening = id === state.selectedId && state.draft;
+    flushSave();
     state.selectedId = id;
-    state.draft = normalizeTrip(JSON.parse(JSON.stringify(state.trips[id])));
+    // re-opening the trip already on screen: keep the in-memory draft, it's newer than the saved copy
+    if (!reopening) state.draft = normalizeTrip(JSON.parse(JSON.stringify(state.trips[id])));
     emptyStateEl.style.display = 'none';
     tripPanelEl.style.display = '';
     tripPanelEl.dataset.activeDay = '0';
@@ -893,6 +1111,7 @@
     if (!state.selectedId || !state.draft) return;
     clearTimeout(state.saveTimer);
     state.saveTimer = setTimeout(() => {
+      state.saveTimer = null;
       // Stamp the draft with the same time we save with, so the echo of our own write coming back from
       // Firestore matches the draft and doesn't rebuild the whole panel (which used to wipe the map).
       if (!state.draft || !state.selectedId) return;
@@ -941,6 +1160,18 @@
         <div id="dayOverview" class="day-overview"></div>
         <div class="day-tabs" id="dayTabs"></div>
         <div id="dayPanelHost"></div>
+      </section>
+
+      <section class="block" id="itinerarySection">
+        <div class="block-head"><h3>Itinerary</h3><span class="hint no-print" style="margin-left:12px">timings for each day, built from your legs</span>
+          <span class="no-print" style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="ghost-btn" id="copyItinBtn" style="margin-left:0">Copy as text</button>
+            <button class="ghost-btn" id="printItinBtn" style="margin-left:0">Print / save as PDF</button>
+          </span>
+        </div>
+        <div class="print-only" id="printTitle"></div>
+        <div class="it-settings" id="timingSettings"></div>
+        <div id="itineraryList"></div>
       </section>
 
       <section class="block">
@@ -1027,7 +1258,7 @@
       const days = [];
       for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate()+1)){
         const key = dt.toISOString().slice(0,10);
-        days.push(existingByDate[key] || {id: uid(), date: key, overnight:'', notes:''});
+        days.push(existingByDate[key] || {id: uid(), date: key, overnight:'', notes:'', items:[]});
       }
       d.days = days;
       tripPanelEl.dataset.activeDay = '0';
@@ -1047,6 +1278,8 @@
     });
 
     document.getElementById('updateMapBtn').addEventListener('click', () => { updateMap(); });
+    document.getElementById('copyItinBtn').addEventListener('click', e => copyItinerary(e.currentTarget));
+    document.getElementById('printItinBtn').addEventListener('click', printItinerary);
 
     renderCurrencySection();
     renderLegs();
@@ -1055,6 +1288,8 @@
     renderFuelCalc();
     renderBudget();
     renderPacking();
+    renderTimingSettings();
+    renderItinerary();
     drawMapFromCache();
     resolveTripPlaces();
   }
@@ -1284,6 +1519,7 @@
     renderTotals();
     renderFuelSummary();
     renderDayOverview();
+    renderItinerary();
     if (curChanged || costChanged) scheduleSave();
   }
 
@@ -1463,7 +1699,27 @@
             filled = true;
           }
           if (filled) scheduleSave();
+          // road geometry for drive legs, so the map follows real roads (one request per leg, cached on the trip)
+          d.routeGeo = d.routeGeo || {};
+          for (const leg of d.legs){
+            if (state.draft !== d) return;
+            if (leg.mode !== 'drive') continue;
+            const key = routeKey(leg);
+            if (d.routeGeo[key] || (state._routeFailed && state._routeFailed.has(key))) continue;
+            const a = geoFor(d, leg.from), b = geoFor(d, leg.to);
+            if (!a || !b) continue;
+            try{
+              d.routeGeo[key] = await osrmGeometry(a, b);
+              scheduleSave();
+              if (state.draft === d) drawMapFromCache();
+            }catch(e){ (state._routeFailed = state._routeFailed || new Set()).add(key); }
+          }
         } while (state._resolveAgain);
+        // drop cached roads for legs that no longer exist
+        const used = new Set(d.legs.filter(l => l.mode === 'drive').map(routeKey));
+        let pruned = false;
+        Object.keys(d.routeGeo || {}).forEach(k => { if (!used.has(k)){ delete d.routeGeo[k]; pruned = true; } });
+        if (pruned && state.draft === d) scheduleSave();
       } finally {
         if (state._resolving === rec) state._resolving = null;
       }
@@ -1633,49 +1889,91 @@
     }
 
     const merc = (p) => L.Projection.SphericalMercator.project(L.latLng(p.lat, p.lon));
-    lineLayer = L.featureGroup().addTo(map);
-    let hasReturn = false;
-    for (let i = 0; i < seq.length - 1; i++){
-      const a = seq[i], b = seq[i + 1];
-      if (!a || !b) continue;
-      const isReturn = i >= turnIdx;
-      if (isReturn) hasReturn = true;
-      const color = isReturn ? backColor : outColor;
-      const mode = ((d.legs[i] && d.legs[i].mode) || 'drive');
+    const mercPt = (ll) => L.Projection.SphericalMercator.project(L.latLng(ll[0], ll[1]));
 
-      // Curve each leg to the right of its direction of travel, so out and back
-      // separate instead of sitting on top of each other.
+    // Fallback when there's no real route yet: a curve bowed to the right of travel, so out and back separate.
+    const bowedPath = (a, b) => {
       const A = merc(a), B = merc(b);
       const dx = B.x - A.x, dy = B.y - A.y;
       const len = Math.hypot(dx, dy) || 1;
-      const bow = 0.16 * len;
-      const C = L.point((A.x + B.x) / 2 + (dy / len) * bow, (A.y + B.y) / 2 - (dx / len) * bow);
-      const curve = [];
-      const N = 28;
-      for (let k = 0; k <= N; k++){
-        const t = k / N, u = 1 - t;
-        const x = u * u * A.x + 2 * u * t * C.x + t * t * B.x;
-        const y = u * u * A.y + 2 * u * t * C.y + t * t * B.y;
-        curve.push(L.Projection.SphericalMercator.unproject(L.point(x, y)));
+      const C = L.point((A.x + B.x) / 2 + (dy / len) * 0.16 * len, (A.y + B.y) / 2 - (dx / len) * 0.16 * len);
+      const out = [];
+      for (let k = 0; k <= 28; k++){
+        const t = k / 28, u = 1 - t;
+        const ll = L.Projection.SphericalMercator.unproject(L.point(
+          u * u * A.x + 2 * u * t * C.x + t * t * B.x, u * u * A.y + 2 * u * t * C.y + t * t * B.y));
+        out.push([ll.lat, ll.lng]);
       }
-      const dashed = mode !== 'drive';
-      L.polyline(curve, { color, weight: 4, opacity: 0.9, dashArray: dashed ? '2 9' : null, lineCap: 'round' })
-        .addTo(lineLayer)
-        .bindTooltip(`${i + 1}. ${esc(a.name)} → ${esc(b.name)} · ${isReturn ? 'return' : 'outbound'}`, { sticky: true });
+      return out;
+    };
+    // Ferries, the tunnel and trains: a straight line, via sea waypoints where a straight line would cross land
+    const linePath = (leg, a, b) => {
+      let via = [];
+      const pa = portId(leg.from), pb = portId(leg.to);
+      const r = ROUTES.find(x => (x.a === pa && x.b === pb) || (x.a === pb && x.b === pa));
+      if (r && r.via) via = (r.a === pa) ? r.via : r.via.slice().reverse();
+      return [[a.lat, a.lon]].concat(via, [[b.lat, b.lon]]);
+    };
+    // Point a fraction of the way along a path, and the direction of travel there
+    const pointAlong = (path, frac) => {
+      const P = path.map(mercPt);
+      const cum = [0];
+      for (let i = 1; i < P.length; i++) cum.push(cum[i-1] + Math.hypot(P[i].x - P[i-1].x, P[i].y - P[i-1].y));
+      const total = cum[cum.length - 1] || 1;
+      const at = (sd) => {
+        sd = Math.max(0, Math.min(total, sd));
+        let i = 1; while (i < cum.length - 1 && cum[i] < sd) i++;
+        const seg = (cum[i] - cum[i-1]) || 1, u = (sd - cum[i-1]) / seg;
+        return { x: P[i-1].x + (P[i].x - P[i-1].x) * u, y: P[i-1].y + (P[i].y - P[i-1].y) * u };
+      };
+      const c = at(total * frac), p1 = at(total * frac - total * 0.02), p2 = at(total * frac + total * 0.02);
+      return { ll: L.Projection.SphericalMercator.unproject(L.point(c.x, c.y)), deg: Math.atan2(-(p2.y - p1.y), p2.x - p1.x) * 180 / Math.PI };
+    };
 
-      // Arrowhead at the midpoint, aimed along the curve's tangent (t = 0.5)
-      const tx = (C.x - A.x) + (B.x - C.x), ty = (C.y - A.y) + (B.y - C.y);
-      const deg = Math.atan2(-ty, tx) * 180 / Math.PI;
-      const mid = L.Projection.SphericalMercator.unproject(L.point(
-        0.25 * A.x + 0.5 * C.x + 0.25 * B.x, 0.25 * A.y + 0.5 * C.y + 0.25 * B.y));
-      L.marker(mid, {
+    lineLayer = L.featureGroup().addTo(map);
+    const drawn = [];
+    let roadsFollowed = 0, driveLegs = 0, hasReturn = false, hasLine = false, hasGuess = false;
+    for (let i = 0; i < seq.length - 1; i++){
+      const a = seq[i], b = seq[i + 1];
+      if (!a || !b) continue;
+      const leg = d.legs[i] || {};
+      const mode = leg.mode || 'drive';
+      const isReturn = i >= turnIdx;
+      if (isReturn) hasReturn = true;
+      let path = null, kind = 'line';
+      if (mode === 'drive'){
+        driveLegs++;
+        const enc = d.routeGeo && d.routeGeo[routeKey(leg)];
+        if (enc){ try{ path = decodePolyline(enc); }catch(e){ path = null; } }
+        if (path && path.length > 1){ roadsFollowed++; kind = 'road'; }
+        else { path = bowedPath(a, b); kind = 'guess'; hasGuess = true; }
+      } else if (mode === 'flight'){ path = bowedPath(a, b); kind = 'line'; hasLine = true; }
+      else { path = linePath(leg, a, b); kind = 'line'; hasLine = true; }
+      drawn.push({ i, a, b, mode, isReturn, path, kind });
+    }
+    // Outbound first (thick), return on top (thin), so a road driven both ways shows both colours
+    drawn.sort((x, y) => (x.isReturn - y.isReturn) || (x.i - y.i));
+    const modeName = { drive:'drive', ferry:'ferry', tunnel:'Eurotunnel', train:'train', flight:'flight' };
+    drawn.forEach(g => {
+      const color = g.isReturn ? backColor : outColor;
+      const weight = g.isReturn ? 3.5 : 6;
+      const dash = g.kind === 'road' ? null : (g.kind === 'guess' ? '7 8' : '2 9');
+      L.polyline(g.path, { color, weight: g.kind === 'line' ? weight - 1 : weight, opacity: g.kind === 'guess' ? 0.6 : 0.9, dashArray: dash, lineCap: 'round', lineJoin: 'round' })
+        .addTo(lineLayer)
+        .bindTooltip(`${g.i + 1}. ${esc(g.a.name)} → ${esc(g.b.name)} · ${g.isReturn ? 'return' : 'outbound'} · ${modeName[g.mode] || g.mode}`, { sticky: true });
+    });
+    drawn.forEach(g => {
+      const color = g.isReturn ? backColor : outColor;
+      // 0.4 along each leg: on a road driven both ways the two arrows land in different places
+      const pt = pointAlong(g.path, 0.4);
+      L.marker(pt.ll, {
         interactive: false, keyboard: false,
         icon: L.divIcon({
           className: 'leg-arrow-icon', iconSize: [20, 20], iconAnchor: [10, 10],
-          html: `<svg width="20" height="20" viewBox="-10 -10 20 20" style="transform:rotate(${deg}deg)"><path d="M-6 -6 L7 0 L-6 6 L-2 0 Z" fill="${color}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`
+          html: `<svg width="20" height="20" viewBox="-10 -10 20 20" style="transform:rotate(${pt.deg}deg)"><path d="M-6 -6 L7 0 L-6 6 L-2 0 Z" fill="${color}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`
         })
       }).addTo(lineLayer);
-    }
+    });
 
     // Legend
     if (!legendEl){
@@ -1685,9 +1983,11 @@
       });
       new Legend().addTo(map);
     }
-    legendEl.innerHTML = hasReturn
-      ? `<div><span class="sw" style="border-color:${outColor}"></span>Outbound</div><div><span class="sw" style="border-color:${backColor}"></span>Return</div>`
-      : `<div><span class="sw" style="border-color:${outColor}"></span>Route (arrows show direction)</div>`;
+    const sw = (col, w, style) => `<span class="sw" style="border-color:${col};border-top-width:${w}px;border-top-style:${style || 'solid'}"></span>`;
+    legendEl.innerHTML =
+      (hasReturn ? `<div>${sw(outColor, 6)}Outbound</div><div>${sw(backColor, 3.5)}Return</div>` : `<div>${sw(outColor, 6)}Route (arrows show direction)</div>`) +
+      (hasLine ? `<div>${sw('var(--ink-dim)', 3, 'dotted')}Ferry / tunnel / train / flight</div>` : '') +
+      (hasGuess ? `<div>${sw('var(--ink-dim)', 3, 'dashed')}Approximate, road not loaded</div>` : '');
 
     // Only re-frame the map when the set of stops actually changed, so redraws don't undo your panning/zoom.
     const sig = pts.map(p => p.join(',')).join('|');
@@ -1701,13 +2001,15 @@
     }
     statusEl.textContent = missing.length
       ? `Couldn't place yet: ${missing.join(', ')} — click "Update map" to look them up.`
-      : `${pts.length} stop${pts.length === 1 ? '' : 's'} plotted.`;
+      : `${pts.length} stop${pts.length === 1 ? '' : 's'} plotted` +
+        (driveLegs ? ` · following real roads on ${roadsFollowed} of ${driveLegs} drive leg${driveLegs === 1 ? '' : 's'}${roadsFollowed < driveLegs ? (state._resolving ? ' (loading…)' : ' — click "Update map" to retry the rest') : ''}.` : '.');
   }
 
   async function updateMap(){
     const statusEl = document.getElementById('mapStatus');
     if (statusEl) statusEl.textContent = 'Looking up locations…';
     state._geoFailed = new Set();
+    state._routeFailed = new Set();
     await resolveTripPlaces();
     drawMapFromCache();
   }
@@ -1760,6 +2062,7 @@
             ${AUTO_MODES.includes(leg.mode) ? '<button type="button" class="auto-chip"></button>' : ''}
           </span>
           <input class="notes" data-f="notes" value="${esc(leg.notes)}" placeholder="notes…">
+          ${(leg.mode==='ferry'||leg.mode==='tunnel') ? `<span class="field" title="Optional: the sailing or train you've booked. Leave blank and the itinerary uses the earliest one after check-in.">${leg.mode==='tunnel'?'Train':'Sailing'} <input type="time" data-f="departTime" value="${esc(leg.departTime||'')}"></span>` : ''}
           ${(leg.mode==='ferry'||leg.mode==='tunnel') ? `<a class="field" style="color:var(--crossing)" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent((leg.mode==='tunnel'?'Eurotunnel':'ferry')+' '+leg.from+' to '+leg.to+' prices'+(d.startDate?' '+d.startDate:''))}">Check current prices</a>` : ''}
         </div>
       </div>
@@ -1790,7 +2093,7 @@
             }
             renderTotals();
           }
-          if (['distanceKm','hours','from','to'].includes(field)) refreshAuto();
+          if (['distanceKm','hours','from','to','departTime'].includes(field)) refreshAuto();
         });
       });
       const chip = el.querySelector('.auto-chip');
@@ -1822,6 +2125,107 @@
     renderTotals();
     renderDayOverview();
     drawMapFromCache();
+  }
+
+  function renderTimingSettings(){
+    const d = state.draft;
+    const host = document.getElementById('timingSettings');
+    if (!host) return;
+    const T = d.timing;
+    host.innerHTML = `
+      <label>Default start <input type="time" id="tmStart" value="${esc(T.start)}"></label>
+      <label>Break every <input type="number" min="0" step="0.5" id="tmEvery" value="${T.breakEveryH}"> h for <input type="number" min="0" step="5" id="tmBreak" value="${T.breakMin}"> min</label>
+      <label>Ferry check-in <input type="number" min="0" step="5" id="tmFerry" value="${T.ferryCheckinMin}"> min</label>
+      <label>Tunnel check-in <input type="number" min="0" step="5" id="tmTunnel" value="${T.tunnelCheckinMin}"> min</label>`;
+    const bind = (id, key, num) => document.getElementById(id).addEventListener('input', e => {
+      T[key] = num ? (parseFloat(e.target.value) || 0) : e.target.value;
+      scheduleSave(); renderItinerary();
+    });
+    bind('tmStart', 'start', false); bind('tmEvery', 'breakEveryH', true); bind('tmBreak', 'breakMin', true);
+    bind('tmFerry', 'ferryCheckinMin', true); bind('tmTunnel', 'tunnelCheckinMin', true);
+  }
+
+  function renderItinerary(){
+    const d = state.draft;
+    const host = document.getElementById('itineraryList');
+    if (!host || !d) return;
+    const ae = document.activeElement;
+    if (ae && host.contains(ae) && ae.classList.contains('newTitle')) return;   // don't wipe a half-typed item
+    const title = document.getElementById('printTitle');
+    if (title) title.innerHTML = `<h2 style="font-size:24px;margin-bottom:2px">${esc(d.name || 'Trip')}</h2><p style="margin:0 0 14px;color:var(--ink-dim)">${(d.startDate && d.endDate) ? esc(fmtDate(d.startDate) + ' – ' + fmtDate(d.endDate)) : ''}</p>`;
+    if (!d.days || !d.days.length){
+      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint)">Generate the day-by-day plan above and the timed itinerary will appear here.</p>';
+      return;
+    }
+    if (!d.legs.length){
+      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint)">Add some legs to the roadbook to build the itinerary.</p>';
+      return;
+    }
+    const plan = computeDayPlan(d), itin = computeItinerary(d, plan);
+    host.innerHTML = d.days.map((day, i) => {
+      const p = plan.days[i] || { countries: [] }, it = itin[i];
+      const stats = it.driveH > 0 ? `${it.driveKm ? it.driveKm + ' km · ' : ''}${fmtDur(it.driveH * 60)} driving` : '';
+      return `<div class="it-day" data-i="${i}">
+        <div class="it-head">
+          <span class="it-dayname">Day ${i+1} · ${esc(fmtDate(day.date))}</span>
+          <span class="it-where">${esc(p.countries.join(' → '))}${stats ? (p.countries.length ? ' · ' : '') + esc(stats) : ''}</span>
+          <label class="it-start">Start <input type="time" class="dayStart" value="${esc(day.start || '')}" placeholder="${esc(d.timing.start)}"></label>
+        </div>
+        <ul class="it-list">${it.items.map(x => `
+          <li class="it-item ${x.kind}">
+            <span class="it-time">${esc(fmtHM(x.t))}</span>
+            <div><div class="it-title">${esc(x.title)}</div>${x.sub ? `<div class="it-sub">${esc(x.sub)}</div>` : ''}</div>
+            ${x.kind === 'custom' ? `<button class="icon-btn it-rm no-print" data-id="${esc(x.id)}" title="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : '<span></span>'}
+          </li>`).join('')}</ul>
+        ${it.warns.map(w => `<p class="it-warn">${esc(w)}</p>`).join('')}
+        ${day.notes ? `<p class="it-sub" style="margin-top:8px">Notes: ${esc(day.notes)}</p>` : ''}
+        <div class="it-add no-print">
+          <input type="time" class="newTime" title="Time (optional)">
+          <input class="newTitle" placeholder="Add a stop, meal or booking…">
+          <button type="button" class="itAddBtn">Add</button>
+        </div>
+      </div>`;
+    }).join('');
+    host.querySelectorAll('.it-day').forEach(card => {
+      const day = d.days[parseInt(card.dataset.i)];
+      card.querySelector('.dayStart').addEventListener('change', e => { day.start = e.target.value; scheduleSave(); renderItinerary(); });
+      const add = () => {
+        const t = card.querySelector('.newTitle').value.trim();
+        if (!t) return;
+        day.items.push({ id: uid(), time: card.querySelector('.newTime').value, title: t });
+        scheduleSave();
+        card.querySelector('.newTitle').blur();
+        renderItinerary();
+      };
+      card.querySelector('.itAddBtn').addEventListener('click', add);
+      card.querySelector('.newTitle').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } });
+      card.querySelectorAll('.it-rm').forEach(btn => btn.addEventListener('click', () => {
+        day.items = day.items.filter(x => x.id !== btn.dataset.id);
+        scheduleSave(); renderItinerary();
+      }));
+    });
+  }
+
+  async function copyItinerary(btn){
+    const text = itineraryText(state.draft);
+    let ok = false;
+    try{ await navigator.clipboard.writeText(text); ok = true; }
+    catch(e){
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try{ ok = document.execCommand('copy'); }catch(err){}
+      ta.remove();
+    }
+    const old = btn.textContent;
+    btn.textContent = ok ? 'Copied' : "Couldn't copy";
+    setTimeout(() => { btn.textContent = old; }, 1600);
+  }
+  function printItinerary(){
+    document.body.classList.add('print-itin');
+    const done = () => { document.body.classList.remove('print-itin'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
   }
 
   function renderDayOverview(){
